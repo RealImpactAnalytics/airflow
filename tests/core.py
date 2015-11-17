@@ -40,6 +40,7 @@ def reset():
 
 reset()
 
+
 class CoreTest(unittest.TestCase):
 
     def setUp(self):
@@ -355,6 +356,25 @@ class CoreTest(unittest.TestCase):
             failed, tests = doctest.testmod(mod)
             if failed:
                 raise Exception("Failed a doctest")
+
+    def test_default_config_gen(self):
+
+        cfg = configuration.default_config()
+
+        # making some basic building blocks are present:
+        assert "[core]" in cfg
+        assert "dags_folder" in cfg
+        assert "sql_alchemy_conn" in cfg
+        assert "fernet_key" in cfg
+
+        # making sure replacement actually happened
+        assert "{AIRFLOW_HOME}" not in cfg
+        assert "{FERNET_KEY}" not in cfg
+
+
+        print cfg
+
+
 
 
 class CliTests(unittest.TestCase):
