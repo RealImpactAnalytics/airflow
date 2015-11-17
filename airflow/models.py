@@ -45,7 +45,6 @@ from airflow.utils import (
 Base = declarative_base()
 ID_LEN = 250
 SQL_ALCHEMY_CONN = configuration.get('core', 'SQL_ALCHEMY_CONN')
-DAGS_FOLDER = os.path.expanduser(configuration.get('core', 'DAGS_FOLDER'))
 XCOM_RETURN_KEY = 'return_value'
 
 ENCRYPTION_ON = False
@@ -120,8 +119,9 @@ class DagBag(LoggingMixin):
             include_examples=configuration.getboolean('core', 'LOAD_EXAMPLES'),
             sync_to_db=False):
 
-        dag_folder = dag_folder or DAGS_FOLDER
+        dag_folder = dag_folder or configuration.get_dags_folder()
         self.logger.info("Filling up the DagBag from {}".format(dag_folder))
+
         self.dag_folder = dag_folder
         self.dags = {}
         self.sync_to_db = sync_to_db
@@ -588,6 +588,7 @@ class TaskInstance(Base):
         if task_start_date:
             cmd += "-s " + task_start_date.isoformat() + ' '
         if not pickle_id and self.task.dag and self.task.dag.full_filepath:
+            DAGS_FOLDER = configuration.get_dags_folder()
             cmd += "-sd DAGS_FOLDER/{self.task.dag.filepath} "
         return cmd.format(**locals())
 
@@ -2072,7 +2073,7 @@ class DAG(LoggingMixin):
         """
         File location of where the dag object is instantiated
         """
-        fn = self.full_filepath.replace(DAGS_FOLDER + '/', '')
+        fn = self.full_filepath.replace(configuration.get_dags_folder() + '/', '')
         fn = fn.replace(os.path.dirname(__file__) + '/', '')
         return fn
 
