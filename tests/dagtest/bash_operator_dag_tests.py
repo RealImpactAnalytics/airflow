@@ -3,17 +3,18 @@
 """
 
 import os
+import time
 import unittest
 from datetime import datetime
 
 from airflow import jobs
-from dag_tester import  DagBackfillTest
+from dag_tester import DagBackfillTest
 
 
-class SingleBashOperatorDagTest_oneDay(unittest.TestCase, DagBackfillTest):
+class BashOperatorSingle_oneDay(unittest.TestCase, DagBackfillTest):
 
     def get_dag_id(self):
-        return "bashop"
+        return "bash_operator_single"
 
     def build_job(self, dag):
         return jobs.BackfillJob(
@@ -21,19 +22,17 @@ class SingleBashOperatorDagTest_oneDay(unittest.TestCase, DagBackfillTest):
                 start_date=datetime(2015, 1, 1),
                 end_date=datetime(2015, 1, 1))
 
-    def post_check(self):
-        with open("/tmp/out.txt") as f:
+    def post_check(self, working_dir):
+        with open("%s/out.2015-01-01.txt" % working_dir) as f:
             assert "success\n" == f.readline()
 
-    def tearDown(self):
-        print "removing /tmp/out.txt"
-        os.system ("rm -rf /tmp/out.txt")
 
+class BashOperatorSingle_3Days(unittest.TestCase, DagBackfillTest):
 
-class SingleBashOperatorDagTest_3Days(unittest.TestCase, DagBackfillTest):
+    dates = ["2015-01-01", "2015-01-02", "2015-01-03"]
 
     def get_dag_id(self):
-        return "bashop"
+        return "bash_operator_single"
 
     def build_job(self, dag):
         return jobs.BackfillJob(
@@ -41,15 +40,14 @@ class SingleBashOperatorDagTest_3Days(unittest.TestCase, DagBackfillTest):
                 start_date=datetime(2015, 1, 1),
                 end_date=datetime(2015, 1, 3))
 
-    def post_check(self):
-        # TODO: we'd like to have a separate file and/or written content per execution date
-        with open("/tmp/out.txt") as f:
-            assert "success\n" == f.readline()
+    def post_check(self, working_dir):
+        for date in self.dates:
+            out_file = "%s/out.%s.txt" % (working_dir, date)
+            with open(out_file) as f:
+                assert "success\n" == f.readline(), \
+                    "The file %s doesn't contain the success line" % out_file
 
-    def tearDown(self):
-        # TODO: we'd like to have a separate file and/or written content per execution date
-        print ("removing /tmp/out.txt")
-        os.system ("rm -rf /tmp/out.txt")
+
 
 
 
