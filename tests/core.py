@@ -54,6 +54,7 @@ class CoreTest(unittest.TestCase):
         self.dag_bash = self.dagbag.dags['example_bash_operator']
         self.runme_0 = self.dag_bash.get_task('runme_0')
         self.run_after_loop = self.dag_bash.get_task('run_after_loop')
+        self.run_this_last = self.dag_bash.get_task('run_this_last')
 
     def test_schedule_dag_no_previous_runs(self):
         """
@@ -383,6 +384,22 @@ class CoreTest(unittest.TestCase):
 
         with self.assertRaisesRegexp(AirflowException, regexp):
             self.run_after_loop.set_upstream(self.runme_0)
+
+    def test_cyclic_dependencies_1(self):
+
+        regexp = "Cycle detected in DAG. (.*)runme_0(.*)"
+        with self.assertRaisesRegexp(AirflowException, regexp):
+            self.runme_0.set_upstream(self.run_after_loop)
+
+    def test_cyclic_dependencies_2(self):
+        regexp = "Cycle detected in DAG. (.*)run_after_loop(.*)"
+        with self.assertRaisesRegexp(AirflowException, regexp):
+            self.run_after_loop.set_downstream(self.runme_0)
+
+    def test_cyclic_dependencies_3(self):
+        regexp = "Cycle detected in DAG. (.*)run_this_last(.*)"
+        with self.assertRaisesRegexp(AirflowException, regexp):
+            self.run_this_last.set_downstream(self.runme_0)
 
 
 class CliTests(unittest.TestCase):
