@@ -14,7 +14,6 @@
 
 from builtins import str
 import subprocess
-import os
 
 from airflow.executors.base_executor import BaseExecutor
 from airflow.utils.state import State

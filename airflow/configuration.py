@@ -709,7 +709,7 @@ logging.info("Reading the config from " + AIRFLOW_CONFIG)
 
 def test_mode():
     conf = AirflowConfigParser()
-    conf.read(TEST_CONFIG)
+    conf.read(TEST_CONFIG_FILE)
 
 conf = AirflowConfigParser()
 conf.read(AIRFLOW_CONFIG)

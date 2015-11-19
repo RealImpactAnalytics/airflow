@@ -28,3 +28,4 @@ rat-results.txt
 /.eggs/
 /.tox/
 venv
+dag_test_airflow.cfg
