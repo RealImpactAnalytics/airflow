@@ -3,14 +3,13 @@
 """
 import tempfile
 
+import os
+import re
 from airflow import configuration, AirflowException
-from airflow import executors, models, settings, utils
-from airflow.configuration import DEFAULT_CONFIG, AIRFLOW_HOME
+from airflow import executors, models, settings
+from airflow.configuration import AIRFLOW_HOME, TEST_CONFIG_FILE
 from airflow.models import DagBag, Variable
 from airflow.settings import Session
-import os
-import logging
-import re
 
 
 class DagBackfillTest(object):
@@ -36,15 +35,16 @@ class DagBackfillTest(object):
 
     def copy_config(self, dags_folder):
 
-        # build a config file with a dag folder pointing to the tested dags
-        config = configuration.default_config()
-        config = re.sub("dags_folder =.*", "dags_folder = %s" % dags_folder, config)
-        config = re.sub("job_heartbeat_sec =.*", "job_heartbeat_sec = 1", config)
+        with open(TEST_CONFIG_FILE) as test_config_file:
+            config = test_config_file.read()
 
-        # this is the config file that will be used by the child process
-        config_location = "%s/dag_test_airflow.cfg" % AIRFLOW_HOME
-        with open (config_location, "w") as cfg_file:
-            cfg_file.write(config)
+            config = re.sub("dags_folder =.*", "dags_folder = %s" % dags_folder, config)
+            config = re.sub("job_heartbeat_sec =.*", "job_heartbeat_sec = 1", config)
+
+            # this is the config file that will be used by the child process
+            config_location = "%s/dag_test_airflow.cfg" % AIRFLOW_HOME
+            with open(config_location, "w") as cfg_file:
+                cfg_file.write(config)
 
         # this is the config that is currently present in memory
         configuration.conf.set("core", "DAGS_FOLDER", dags_folder)
@@ -92,8 +92,9 @@ class DagBackfillTest(object):
         old_var = session.query(Variable).filter_by(
             key="unit_test_tmp_dir").first()
 
-        session.delete(old_var)
-        session.commit()
+        if old_var is not None:
+            session.delete(old_var)
+            session.commit()
 
         var = Variable(key="unit_test_tmp_dir", val=unit_test_tmp_dir)
         session.add(var)

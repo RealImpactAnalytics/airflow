@@ -8,7 +8,7 @@ import unittest
 from datetime import datetime
 
 from airflow import jobs
-from dag_tester import DagBackfillTest
+from .dag_tester import DagBackfillTest
 
 
 class BashOperatorSingle_oneDay(unittest.TestCase, DagBackfillTest):
