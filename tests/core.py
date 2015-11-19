@@ -15,6 +15,7 @@ from airflow.bin import cli
 from airflow.www import app as application
 from airflow.settings import Session
 from lxml import html
+from airflow.utils import AirflowException
 
 NUM_EXAMPLE_DAGS = 7
 DEV_NULL = '/dev/null'
@@ -52,6 +53,7 @@ class CoreTest(unittest.TestCase):
         self.dag = dag
         self.dag_bash = self.dagbag.dags['example_bash_operator']
         self.runme_0 = self.dag_bash.get_task('runme_0')
+        self.run_after_loop = self.dag_bash.get_task('run_after_loop')
 
     def test_schedule_dag_no_previous_runs(self):
         """
@@ -371,10 +373,16 @@ class CoreTest(unittest.TestCase):
         assert "{AIRFLOW_HOME}" not in cfg
         assert "{FERNET_KEY}" not in cfg
 
+    def test_duplicate_dependencies(self):
 
-        print cfg
+        regexp = "Dependency (.*)runme_0(.*)run_after_loop(.*) " \
+                 "already registered"
 
+        with self.assertRaisesRegexp(AirflowException, regexp):
+            self.runme_0.set_downstream(self.run_after_loop)
 
+        with self.assertRaisesRegexp(AirflowException, regexp):
+            self.run_after_loop.set_upstream(self.runme_0)
 
 
 class CliTests(unittest.TestCase):
