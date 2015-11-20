@@ -38,11 +38,13 @@ class DagBackfillTest(object):
         with open(TEST_CONFIG_FILE) as test_config_file:
             config = test_config_file.read()
 
-            config = re.sub("dags_folder =.*", "dags_folder = %s" % dags_folder, config)
-            config = re.sub("job_heartbeat_sec =.*", "job_heartbeat_sec = 1", config)
+            config = re.sub("dags_folder =.*",
+                            "dags_folder = {}".format(dags_folder), config)
+            config = re.sub("job_heartbeat_sec =.*",
+                            "job_heartbeat_sec = 1", config)
 
             # this is the config file that will be used by the child process
-            config_location = "%s/dag_test_airflow.cfg" % AIRFLOW_HOME
+            config_location = "{}/dag_test_airflow.cfg".format(AIRFLOW_HOME)
             with open(config_location, "w") as cfg_file:
                 cfg_file.write(config)
 
@@ -54,13 +56,15 @@ class DagBackfillTest(object):
     def test_run(self):
 
         temp_dir = self.add_tmp_dir_variable()
-        dags_folder = "%s/dags" % os.path.dirname(__file__)
-        config_location = self.copy_config(dags_folder )
+        dags_folder = "{}/dags".format(os.path.dirname(__file__))
+        config_location = self.copy_config(dags_folder)
 
         dagbag = DagBag(dags_folder, include_examples=False)
 
         if self.get_dag_id() not in dagbag.dags:
-            raise AirflowException("DAG id %s not found in folder %s" % (self.get_dag_id(), dags_folder))
+            msg = "DAG id {id} not found in folder {folder}" \
+                  "".format(id=self.get_dag_id(), folder=dags_folder)
+            raise AirflowException(msg)
 
         dag = dagbag.dags[self.get_dag_id()]
         job = self.build_job(dag)
@@ -80,7 +84,7 @@ class DagBackfillTest(object):
 
         self.post_check(temp_dir)
 
-        os.system("rm -rf %s" % temp_dir)
+        os.system("rm -rf {temp_dir}".format(**locals()))
         self.reset(job.dag.dag_id)
 
     def add_tmp_dir_variable(self):

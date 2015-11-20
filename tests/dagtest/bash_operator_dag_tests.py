@@ -23,7 +23,7 @@ class BashOperatorSingle_oneDay(unittest.TestCase, DagBackfillTest):
                 end_date=datetime(2015, 1, 1))
 
     def post_check(self, working_dir):
-        with open("%s/out.2015-01-01.txt" % working_dir) as f:
+        with open("{working_dir}/out.2015-01-01.txt".format(**locals())) as f:
             assert "success\n" == f.readline()
 
 
@@ -42,10 +42,11 @@ class BashOperatorSingle_3Days(unittest.TestCase, DagBackfillTest):
 
     def post_check(self, working_dir):
         for date in self.dates:
-            out_file = "%s/out.%s.txt" % (working_dir, date)
+            out_file = "{working_dir}/out.{date}.txt".format(**locals())
             with open(out_file) as f:
                 assert "success\n" == f.readline(), \
-                    "The file %s doesn't contain the success line" % out_file
+                    "The file {} doesn't contain the success line" \
+                    "".format(out_file)
 
 
 class BashOperatorAB_ds(unittest.TestCase, DagBackfillTest):
@@ -54,8 +55,8 @@ class BashOperatorAB_ds(unittest.TestCase, DagBackfillTest):
              "2015-01-05", "2015-01-06", "2015-01-07", "2015-01-08",
              "2015-01-09", "2015-01-10"]
 
-    file_a = "%s/out.a.%s.txt"
-    file_b = "%s/out.b.%s.txt"
+    file_a = "{working_dir}/out.a.{date}.txt"
+    file_b = "{working_dir}/out.b.{date}.txt"
 
     def get_dag_id(self):
         return "bash_operator_ab_downstream"
@@ -69,21 +70,24 @@ class BashOperatorAB_ds(unittest.TestCase, DagBackfillTest):
     def post_check(self, working_dir):
         for date in self.dates:
 
-            file_a_date = self.file_a % (working_dir, date)
-            file_b_date = self.file_b % (working_dir, date)
+            file_a_date = self.file_a.format(**locals())
+            file_b_date = self.file_b.format(**locals())
 
             with open(file_a_date) as f:
                 assert "success_a\n" == f.readline(), \
-                    "The file %s doesn't contain the success line" % file_a_date
+                    "The file {} doesn't contain the success line" \
+                    "".format(file_a_date)
 
             with open(file_b_date) as f:
                 assert "success_b\n" == f.readline(), \
-                    "The file %s doesn't contain the success line" % file_b_date
+                    "The file {} doesn't contain the success line" \
+                    "".format(file_b_date)
 
             time_a = time.ctime(os.path.getmtime(file_a_date))
             time_b = time.ctime(os.path.getmtime(file_b_date))
             assert time_a < time_b, \
-                "Task a was not executed before Task b for date %s" % date
+                "Task a was not executed before Task b for date {}" \
+                "".format(date)
 
 
 class BashOperatorAB_us(BashOperatorAB_ds, DagBackfillTest):
@@ -104,8 +108,8 @@ class BashOperatorAB_depends_on_past(BashOperatorAB_ds, DagBackfillTest):
              "2015-01-05", "2015-01-06", "2015-01-07", "2015-01-08",
              "2015-01-09", "2015-01-10"]
 
-    file_a = "%s/out.a.%s.txt"
-    file_b = "%s/out.b.%s.txt"
+    file_a = "{working_dir}/out.a.{date}.txt"
+    file_b = "{working_dir}/out.b.{date}.txt"
 
     def get_dag_id(self):
         return "bash_operator_ab_depends_on_past"
@@ -116,25 +120,28 @@ class BashOperatorAB_depends_on_past(BashOperatorAB_ds, DagBackfillTest):
         prev_time_b = None
 
         for date in self.dates:
-            file_a_date = self.file_a % (working_dir, date)
-            file_b_date = self.file_b % (working_dir, date)
+            file_a_date = self.file_a.format(**locals())
+            file_b_date = self.file_b.format(**locals())
 
             with open(file_a_date) as f:
                 assert "success_a\n" == f.readline(), \
-                    "The file %s doesn't contain the success line" % file_a_date
+                    "The file {} doesn't contain the success line" \
+                    "".format(file_a_date)
 
             with open(file_b_date) as f:
                 assert "success_b\n" == f.readline(), \
-                    "The file %s doesn't contain the success line" % file_b_date
+                    "The file {} doesn't contain the success line" \
+                    "".format(file_b_date)
 
             time_a = time.ctime(os.path.getmtime(file_a_date))
             time_b = time.ctime(os.path.getmtime(file_b_date))
             assert time_a < time_b, \
-                "Task a was not executed before Task b for date %s" % date
+                "Task a was not executed before Task b for date {}" \
+                "".format(date)
 
             if not first_date:
                 assert (time_b > prev_time_b), \
-                    "Task b of date %s did not wait for his past" % date
+                    "Task b of date {} did not wait for his past".format(date)
 
             first_date = False
             prev_time_b = time_b
@@ -146,8 +153,8 @@ class BashOperatorAB_wait_for_downstream(BashOperatorAB_ds, DagBackfillTest):
              "2015-01-05", "2015-01-06", "2015-01-07", "2015-01-08",
              "2015-01-09", "2015-01-10"]
 
-    file_a = "%s/out.a.%s.txt"
-    file_b = "%s/out.b.%s.txt"
+    file_a = "{working_dir}/out.a.{date}.txt"
+    file_b = "{working_dir}/out.b.{date}.txt"
 
     def get_dag_id(self):
         return "bash_operator_ab_wait_for_downstream"
@@ -158,26 +165,29 @@ class BashOperatorAB_wait_for_downstream(BashOperatorAB_ds, DagBackfillTest):
         prev_time_b = None
 
         for date in self.dates:
-            file_a_date = self.file_a % (working_dir, date)
-            file_b_date = self.file_b % (working_dir, date)
+            file_a_date = self.file_a.format(**locals())
+            file_b_date = self.file_b.format(**locals())
 
             with open(file_a_date) as f:
                 assert "success_a\n" == f.readline(), \
-                    "The file %s doesn't contain the success line" % file_a_date
+                    "The file {} doesn't contain the success line" \
+                    "".format(file_a_date)
 
             with open(file_b_date) as f:
                 assert "success_b\n" == f.readline(), \
-                    "The file %s doesn't contain the success line" % file_b_date
+                    "The file {} doesn't contain the success line" \
+                    "".format(file_b_date)
 
             time_a = time.ctime(os.path.getmtime(file_a_date))
             time_b = time.ctime(os.path.getmtime(file_b_date))
             assert time_a < time_b, \
-                "Task a was not executed before Task b for date %s" % date
+                "Task a was not executed before Task b for date {}" \
+                "".format(date)
 
             if not first_date:
                 assert (time_a > prev_time_b), \
-                    "Task a of date %s did not wait for his previous " \
-                    "downstream tasks to finish" % date
+                    "Task a of date {} did not wait for his previous " \
+                    "downstream tasks to finish".format(date)
 
             first_date = False
             prev_time_b = time_b
