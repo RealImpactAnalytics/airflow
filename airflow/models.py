@@ -2777,3 +2777,150 @@ class ImportError(Base):
     timestamp = Column(DateTime)
     filename = Column(String(1024))
     stacktrace = Column(Text)
+
+
+class Trigger:
+    """
+    Triggers represent a dependency of an operator on a range of schedules of
+    another operator.
+    * Trigger(t) depends on the state of t of the same schedule
+    * Trigger(t, 1) depends on the state of t of the previous schedule
+    * Trigger(t, n) depends on the state of t of the n previous schedules
+      (not including the current schedule)
+
+    :param task: the depended upon task
+    :type task: TaskInstance
+    :param past_executions: The number of past executions that the
+    dependant depends on. If it is left to 0, the Trigger is aimed at
+    the same schedule as the dependant. If it is set to a value > 0,
+    the Trigger will look at the corresponding past executions to
+    evaluate the Trigger.
+    :type past_executions: non negative integer
+    """
+
+    def __init__(self, task, past_executions=0):
+        self.dag_id = task.dag_id
+        self.task_id = task.task_id
+        self.task = task
+
+        assert past_executions >= 0, "past_executions parameter must be >= 0"
+        self.past_executions = past_executions
+
+    def states(self, execution_date, main_session=None):
+        """
+        Returns all the states of depended upon task instances.
+
+        :param execution_date: the date on which the trigger should be evaluated
+        :type execution_date: datetime
+        :return: the states of all depended upon task instances
+        :rtype: list of airflow.utils.State
+        """
+        TI = TaskInstance
+
+        first_date = self._compute_first_date(execution_date)
+        last_date = self._compute_last_date(execution_date)
+
+        if last_date < first_date:
+            return []
+
+        session = main_session or settings.Session()
+
+        query = session.query(TI.execution_date, TI.state).filter(
+            TI.dag_id == self.dag_id,
+            TI.task_id == self.task_id,
+            TI.execution_date >= first_date,
+            TI.execution_date <= last_date,
+        )
+
+        if not main_session:
+            session.commit()
+            session.close()
+
+        sparse_results = dict(query.all())
+        schedules = self.task.dag.date_range(start_date=first_date,
+                                             end_date=last_date)
+
+        # Filling states with Nones when the TI isn't in the DB yet
+        states = []
+        for schedule in schedules:
+            if schedule in sparse_results.keys():
+                states.append(sparse_results[schedule])
+            else:
+                states.append(None)
+
+        return states
+
+    def evaluate(self, execution_date, main_session=None):
+        """
+        Evaluates the trigger by returning the state corresponding to the
+        depended upon task instances. Schedules that are before the DAG's
+        `start_date` are ignored.
+
+        :param execution_date: the date on which the trigger should be evaluated
+        :type execution_date: datetime
+        :return: the state corresponding to the collective state of schedules
+        depended upon.
+        :rtype: airflow.utils.State
+        """
+
+        states = self.states(execution_date, main_session)
+
+        # If states is empty, there are no task instances to depend on
+        # e.g. a dependency on the past when the past date is < start_date
+        if not states:
+            return State.SUCCESS
+
+        # Some of the dependencies aren't even in the DB yet
+        elif None in states:
+            return None
+
+        elif State.SHUTDOWN in states:
+            return State.SHUTDOWN
+
+        elif State.UPSTREAM_FAILED in states:
+            return State.UPSTREAM_FAILED
+
+        elif State.FAILED in states:
+            return State.FAILED
+
+        elif State.SKIPPED in states:
+            return State.SKIPPED
+
+        elif State.UP_FOR_RETRY in states:
+            return State.UP_FOR_RETRY
+
+        elif State.QUEUED in states:
+            return State.QUEUED
+
+        elif State.RUNNING in states:
+            return State.RUNNING
+
+        else:
+            assert all([s == State.SUCCESS for s in states])
+            return State.SUCCESS
+
+    def _compute_first_date(self, execution_date):
+        start_date = self.task.start_date
+        first_date = self.task.dag.previous_schedule(execution_date,
+                                                     self.past_executions)
+        first_possible_date = max(start_date, first_date)
+        return first_possible_date
+
+    def _compute_last_date(self, execution_date):
+        last_date = execution_date
+        # If past_executions is not 0, then the Trigger is targeting past
+        # executions only, we remove the current execution from the range
+        if self.past_executions > 0:
+            last_date = self.task.dag.previous_schedule(execution_date)
+
+        return last_date
+
+    def __repr__(self):
+        return "<Trigger: {t.dag_id}.{t.task_id}, {t.past_executions}>" \
+               "".format(t=self)
+
+    def __eq__(self, other):
+        dag_id_eq = self.dag_id == other.dag_id
+        task_id_eq = self.task_id == other.task_id
+        past_exec_eq = self.past_executions == other.past_executions
+        return dag_id_eq and task_id_eq and past_exec_eq
