@@ -28,8 +28,7 @@ class DagBackfillTest(object):
 
     def reset(self, dag_id):
         session = Session()
-        tis = session.query(models.TaskInstance).filter_by(dag_id=dag_id)
-        tis.delete()
+        session.query(models.TaskInstance).filter_by(dag_id=dag_id).delete()
         session.commit()
         session.close()
 
@@ -89,19 +88,14 @@ class DagBackfillTest(object):
 
     def add_tmp_dir_variable(self):
 
-        unit_test_tmp_dir = tempfile.mkdtemp()
+        key = "unit_test_tmp_dir"
+        tmp_dir = tempfile.mkdtemp()
+        var = Variable(key=key, val=tmp_dir)
 
-        session = settings.Session()
-
-        old_var = session.query(Variable).filter_by(
-            key="unit_test_tmp_dir").first()
-
-        if old_var is not None:
-            session.delete(old_var)
-            session.commit()
-
-        var = Variable(key="unit_test_tmp_dir", val=unit_test_tmp_dir)
+        session = Session()
+        session.query(Variable).filter_by(key=key).delete()
         session.add(var)
         session.commit()
+        session.close()
 
-        return unit_test_tmp_dir
+        return tmp_dir
