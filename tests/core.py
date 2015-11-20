@@ -364,7 +364,7 @@ class CoreTest(unittest.TestCase):
 
         cfg = configuration.default_config()
 
-        # making some basic building blocks are present:
+        # making sure some basic building blocks are present:
         assert "[core]" in cfg
         assert "dags_folder" in cfg
         assert "sql_alchemy_conn" in cfg
