@@ -402,7 +402,6 @@ def parameterized_config(template):
     current scope
     :param template: a config content templated with {{variables}}
     """
-
     FERNET_KEY = generate_fernet_key()
     all_vars = {k: v for d in [globals(), locals()] for k, v in d.items()}
     return template.format(**all_vars)
