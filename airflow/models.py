@@ -2015,11 +2015,20 @@ class DAG(object):
         elif isinstance(self._schedule_interval, timedelta):
             return dttm + self._schedule_interval
 
-    def following_schedule(self, dttm, n=1):
-        following = dttm
-        for i in range(0, n):
-            following = self.directly_following_schedule(following)
-        return following
+    def following_schedule(self, reference, n=1):
+        """
+        Returns the `n`th schedule after `reference`
+        :param reference: the reference schedule
+        :type reference: datetime
+        :param n: the number of schedules to go forward in time to
+        :type n: int
+        """
+        assert n >= 0, "{n} should be positive".format(**locals())
+        if n == 0:
+            return reference
+        else:
+            following = self.directly_following_schedule(reference)
+            return self.following_schedule(following, n-1)
 
     def directly_previous_schedule(self, dttm):
         if isinstance(self._schedule_interval, six.string_types):
@@ -2028,11 +2037,20 @@ class DAG(object):
         elif isinstance(self._schedule_interval, timedelta):
             return dttm - self._schedule_interval
 
-    def previous_schedule(self, dttm, n=1):
-        previous = dttm
-        for i in range(0, n):
-            previous = self.directly_previous_schedule(previous)
-        return previous
+    def previous_schedule(self, reference, n=1):
+        """
+        Returns the `n`th schedule before `reference`
+        :param reference: the reference schedule
+        :type reference: datetime
+        :param n: the number of schedules to back in time to
+        :type n: int
+        """
+        assert n >= 0, "{n} should be positive".format(**locals())
+        if n == 0:
+            return reference
+        else:
+            previous = self.directly_previous_schedule(reference)
+            return self.previous_schedule(previous, n-1)
 
     @property
     def task_ids(self):
