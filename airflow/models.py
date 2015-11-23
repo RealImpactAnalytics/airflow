@@ -718,8 +718,7 @@ class TaskInstance(Base):
 
         session = main_session or settings.Session()
 
-        task = self.task
-        triggers = task.upstream_triggers
+        triggers = self.task.upstream_triggers
 
         # count number of successes, skipped, failed, upstream_failed and
         # done (= total of these four)
@@ -747,18 +746,18 @@ class TaskInstance(Base):
                 self.end_date = datetime.now()
                 session.merge(self)
 
-        if task.trigger_rule == TR.ONE_SUCCESS and successes > 0:
+        if self.task.trigger_rule == TR.ONE_SUCCESS and successes > 0:
             return True
-        elif (task.trigger_rule == TR.ONE_FAILED and
+        elif (self.task.trigger_rule == TR.ONE_FAILED and
               (failed + upstream_failed) > 0):
             return True
-        elif (task.trigger_rule == TR.ALL_SUCCESS and
+        elif (self.task.trigger_rule == TR.ALL_SUCCESS and
               successes == len(triggers)):
             return True
-        elif (task.trigger_rule == TR.ALL_FAILED and
+        elif (self.task.trigger_rule == TR.ALL_FAILED and
               failed + upstream_failed == len(triggers)):
             return True
-        elif (task.trigger_rule == TR.ALL_DONE and
+        elif (self.task.trigger_rule == TR.ALL_DONE and
               done == len(triggers)):
             return True
 
@@ -1630,8 +1629,8 @@ class BaseOperator(object):
         tuples = self._upstream_tuples
 
         if self.wait_for_downstream:
-            for t in self.downstream_list:
-                tuples.append((t, Trigger(t, 1)))
+            for task in self.downstream_list:
+                tuples.append((task, Trigger(task, 1)))
 
         return tuples
 
