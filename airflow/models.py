@@ -1442,9 +1442,6 @@ class BaseOperator(object):
         # set_upstream, NOT depends_on_past or wait_for_downstream
         self._upstream_tuples = []
 
-        # This list contains triggers added through depends_on_past only
-        self._upstream_tuples_extra = []
-
         # Private attribute containing tuples of (task, trigger) where task
         # depends on self and trigger is the trigger representing the
         # dependency, trigger will thus contain self
@@ -1452,19 +1449,11 @@ class BaseOperator(object):
         # set_upstream, NOT depends_on_past or wait_for_downstream
         self._downstream_tuples = []
 
-        # This list contains triggers added through depends_on_past only
-        self._downstream_tuples_extra = []
-
         self.depends_on_past = depends_on_past
         self.wait_for_downstream = wait_for_downstream
 
         if self.wait_for_downstream:
             self.depends_on_past = True
-
-        if self.depends_on_past:
-            trigger = Trigger(self, state=State.SUCCESS, past_executions=1)
-            self._upstream_tuples_extra.append((self, trigger))
-            self._downstream_tuples_extra.append((self, trigger))
 
         self._comps = {
             'task_id',
@@ -1679,7 +1668,11 @@ class BaseOperator(object):
         """@property: tuples of all the (task, trigger) on which this task
         depends on that were added through depends_on_past or
         wait_for_downstream only"""
-        tuples = self._upstream_tuples_extra
+        tuples = []
+
+        if self.depends_on_past:
+            trigger = Trigger(self, state=State.SUCCESS, past_executions=1)
+            tuples.append((self, trigger))
 
         if self.wait_for_downstream:
             for task in self.downstream_list:
