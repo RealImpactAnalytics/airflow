@@ -285,6 +285,7 @@ unit_test_mode = True
 load_examples = True
 donot_pickle = False
 dag_concurrency = 16
+fernet_key = {FERNET_KEY}
 
 [webserver]
 base_url = http://localhost:8080
@@ -406,7 +407,9 @@ def default_config():
 
 TEST_CONFIG_FILE = AIRFLOW_HOME + '/unittests.cfg'
 if not os.path.isfile(TEST_CONFIG_FILE):
-    logging.info("Creating new config file in: " + TEST_CONFIG_FILE)
+    logging.info("Creating new airflow config file for unit tests in: " +
+                 TEST_CONFIG_FILE)
+    FERNET_KEY = generate_fernet_key()
     with open(TEST_CONFIG_FILE, 'w') as f:
         f.write(TEST_CONFIG.format(**locals()))
 
@@ -416,7 +419,7 @@ if not os.path.isfile(AIRFLOW_CONFIG):
     when it is missing. The right way to change your configuration is to alter
     your configuration file, not this code.
     """
-    logging.info("Creating new config file in: " + AIRFLOW_CONFIG)
+    logging.info("Creating new airflow config file in: " + AIRFLOW_CONFIG)
     with open(AIRFLOW_CONFIG, 'w') as f:
         f.write(default_config())
 
