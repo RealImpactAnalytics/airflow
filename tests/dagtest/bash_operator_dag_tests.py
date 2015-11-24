@@ -12,7 +12,9 @@ from .dag_tester import DagBackfillTest
 
 
 class BashOperatorSingle_oneDay(unittest.TestCase, DagBackfillTest):
-
+    """
+    Tests that a bash operator executed over 1 day correctly produces 1 file.
+    """
     def get_dag_id(self):
         return "bash_operator_single"
 
@@ -28,7 +30,9 @@ class BashOperatorSingle_oneDay(unittest.TestCase, DagBackfillTest):
 
 
 class BashOperatorSingle_3Days(unittest.TestCase, DagBackfillTest):
-
+    """
+    Tests that a bash operator executed over 3 days correctly produces 3 files.
+    """
     dates = ["2015-01-01", "2015-01-02", "2015-01-03"]
 
     def get_dag_id(self):
@@ -50,7 +54,13 @@ class BashOperatorSingle_3Days(unittest.TestCase, DagBackfillTest):
 
 
 class BashOperatorAB_ds(unittest.TestCase, DagBackfillTest):
+    """
+    Tests that two bash operators linked with .set_downstream that are executed
+    over 10 days each produce 10 files in a legal order.
 
+    * A and B
+    * B depends on A
+    """
     dates = ["2015-01-01", "2015-01-02", "2015-01-03", "2015-01-04",
              "2015-01-05", "2015-01-06", "2015-01-07", "2015-01-08",
              "2015-01-09", "2015-01-10"]
@@ -91,19 +101,42 @@ class BashOperatorAB_ds(unittest.TestCase, DagBackfillTest):
 
 
 class BashOperatorAB_us(BashOperatorAB_ds, DagBackfillTest):
+    """
+    Tests that two bash operators linked with .set_upstream that are executed
+    over 10 days each produce 10 files in a legal order.
 
+    * A and B
+    * B depends on A
+    """
     def get_dag_id(self):
         return "bash_operator_ab_upstream"
 
 
 class BashOperatorAB_retries(BashOperatorAB_ds, DagBackfillTest):
+    """
+    Tests that two bash operators linked with .set_downstream that are executed
+    over 10 days each produce 10 files in a legal order. Retries introduce
+    chaos.
 
+    * A and B
+    * B depends on A
+    * A has retries
+    """
     def get_dag_id(self):
         return "bash_operator_ab_retries"
 
 
 class BashOperatorAB_depends_on_past(BashOperatorAB_ds, DagBackfillTest):
+    """
+    Tests that two bash operators linked with .set_downstream and
+    depends_on_past that are executed over 10 days each produce 10 files in a
+    legal order. Retries introduce chaos.
 
+    * A and B
+    * B depends on A
+    * A has retries
+    * B depends on past
+    """
     dates = ["2015-01-01", "2015-01-02", "2015-01-03", "2015-01-04",
              "2015-01-05", "2015-01-06", "2015-01-07", "2015-01-08",
              "2015-01-09", "2015-01-10"]
@@ -148,7 +181,16 @@ class BashOperatorAB_depends_on_past(BashOperatorAB_ds, DagBackfillTest):
 
 
 class BashOperatorAB_wait_for_downstream(BashOperatorAB_ds, DagBackfillTest):
+    """
+    Tests that two bash operators linked with .set_downstream and
+    wait_for_downstream that are executed over 10 days each produce 10 files
+    in a legal order. Retries introduce chaos.
 
+    * A and B
+    * B depends on A
+    * A has retries
+    * A waits for downstream
+    """
     dates = ["2015-01-01", "2015-01-02", "2015-01-03", "2015-01-04",
              "2015-01-05", "2015-01-06", "2015-01-07", "2015-01-08",
              "2015-01-09", "2015-01-10"]
