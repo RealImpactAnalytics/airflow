@@ -58,6 +58,12 @@ class TriggerRule(object):
     DUMMY = 'dummy'
 
 
+class TriggerType(object):
+    ALL = 'all'
+    ANY = 'any'
+    DUMMY = 'dummy'
+
+
 class State(object):
     """
     Static class with task instance states constants and color method to
@@ -103,6 +109,10 @@ class State(object):
         return [
             None, cls.FAILED, cls.UP_FOR_RETRY, cls.UPSTREAM_FAILED,
             cls.SKIPPED]
+
+    @classmethod
+    def done(cls):
+        return [cls.SUCCESS, cls.FAILED, cls.UPSTREAM_FAILED, cls.SKIPPED]
 
 
 cron_presets = {

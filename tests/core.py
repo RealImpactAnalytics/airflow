@@ -224,12 +224,12 @@ class CoreTest(unittest.TestCase):
         captainHook.run("drop table operator_test_table")
 
     def test_clear_api(self):
-        task = self.dag_bash.tasks[0]
+        task = self.dag_bash.get_task('run_after_loop')
         task.clear(
             start_date=DEFAULT_DATE, end_date=DEFAULT_DATE,
             upstream=True, downstream=True)
         ti = models.TaskInstance(task=task, execution_date=DEFAULT_DATE)
-        ti.are_dependents_done()
+        ti.are_dependencies_met()
 
     def test_bash_operator(self):
         t = operators.BashOperator(

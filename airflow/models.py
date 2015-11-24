@@ -39,7 +39,7 @@ from airflow.executors import DEFAULT_EXECUTOR, LocalExecutor
 from airflow import configuration
 from airflow.utils import (
     AirflowException, State, apply_defaults, provide_session,
-    is_container, as_tuple, TriggerRule)
+    is_container, as_tuple, TriggerRule, TriggerType)
 
 Base = declarative_base()
 ID_LEN = 250
@@ -47,12 +47,12 @@ SQL_ALCHEMY_CONN = configuration.get('core', 'SQL_ALCHEMY_CONN')
 XCOM_RETURN_KEY = 'return_value'
 
 ENCRYPTION_ON = False
-try:
-    from cryptography.fernet import Fernet
-    FERNET = Fernet(configuration.get('core', 'FERNET_KEY').encode('utf-8'))
-    ENCRYPTION_ON = True
-except:
-    pass
+# try:
+#    from cryptography.fernet import Fernet
+#    FERNET = Fernet(configuration.get('core', 'FERNET_KEY').encode('utf-8'))
+#    ENCRYPTION_ON = True
+# except:
+#    pass
 
 if 'mysql' in SQL_ALCHEMY_CONN:
     LongText = LONGTEXT
@@ -711,131 +711,65 @@ class TaskInstance(Base):
         """
         return self.is_queueable(flag_upstream_failed) and not self.pool_full()
 
-    def are_dependents_done(self, main_session=None):
-        """
-        Checks whether the dependents of this task instance have all succeeded.
-        This is meant to be used by wait_for_downstream.
-
-        This is useful when you do not want to start processing the next
-        schedule of a task until the dependents are done. For instance,
-        if the task DROPs and recreates a table.
-        """
-        session = main_session or settings.Session()
-        task = self.task
-
-        if not task._downstream_list:
-            return True
-
-        downstream_task_ids = [t.task_id for t in task._downstream_list]
-        ti = session.query(func.count(TaskInstance.task_id)).filter(
-            TaskInstance.dag_id == self.dag_id,
-            TaskInstance.task_id.in_(downstream_task_ids),
-            TaskInstance.execution_date == self.execution_date,
-            TaskInstance.state == State.SUCCESS,
-        )
-        count = ti[0][0]
-        if not main_session:
-            session.commit()
-            session.close()
-        return count == len(task._downstream_list)
-
     def are_dependencies_met(
             self, main_session=None, flag_upstream_failed=False):
-        """
-        Returns a boolean on whether the upstream tasks are in a SUCCESS state
-        and considers depends_on_past and the previous run's state.
 
-        :param flag_upstream_failed: This is a hack to generate
-            the upstream_failed state creation while checking to see
-            whether the task instance is runnable. It was the shortest
-            path to add the feature
-        :type flag_upstream_failed: boolean
-        """
-        TI = TaskInstance
-        TR = TriggerRule
+        TT = TriggerType
 
-        # Using the session if passed as param
         session = main_session or settings.Session()
-        task = self.task
 
-        # Checking that the depends_on_past is fulfilled
-        if (task.depends_on_past and
-                not self.execution_date == task.start_date):
-            previous_ti = session.query(TI).filter(
-                TI.dag_id == self.dag_id,
-                TI.task_id == task.task_id,
-                TI.execution_date ==
-                    self.task.dag.previous_schedule(self.execution_date),
-                TI.state == State.SUCCESS,
-            ).first()
-            if not previous_ti:
-                return False
+        triggers = self.task.upstream_triggers
+        triggers_extra = self.task.upstream_triggers_extra
 
-            # Applying wait_for_downstream
-            previous_ti.task = self.task
-            if task.wait_for_downstream and not \
-                    previous_ti.are_dependents_done(session):
-                return False
+        evaluations = []
+        for t in triggers:
+            evaluations.append(t.evaluate(self.execution_date, session))
 
-        # Checking that all upstream dependencies have succeeded
-        if not task._upstream_list or task.trigger_rule == TR.DUMMY:
-            return True
+        evaluations_extra = []
+        for t in triggers_extra:
+            evaluations_extra.append(t.evaluate(self.execution_date, session))
+
+        # These dependencies are of the type ALL by default
+        triggered_extra = [x for (x, _) in evaluations_extra]
+        if all(triggered_extra):
+            triggered_extra_final = True
         else:
-            upstream_task_ids = [t.task_id for t in task._upstream_list]
-            qry = (
-                session
-                .query(
-                    func.coalesce(func.sum(
-                        case([(TI.state == State.SUCCESS, 1)], else_=0)), 0),
-                    func.coalesce(func.sum(
-                        case([(TI.state == State.SKIPPED, 1)], else_=0)), 0),
-                    func.coalesce(func.sum(
-                        case([(TI.state == State.FAILED, 1)], else_=0)), 0),
-                    func.coalesce(func.sum(
-                        case([(TI.state == State.UPSTREAM_FAILED, 1)], else_=0)), 0),
-                    func.count(TI.task_id),
-                )
-                .filter(
-                    TI.dag_id == self.dag_id,
-                    TI.task_id.in_(upstream_task_ids),
-                    TI.execution_date == self.execution_date,
-                    TI.state.in_([
-                        State.SUCCESS, State.FAILED,
-                        State.UPSTREAM_FAILED, State.SKIPPED]),
-                )
-            )
-            successes, skipped, failed, upstream_failed, done = qry.first()
-            if flag_upstream_failed:
-                if skipped >= len(task._upstream_list):
-                    self.state = State.SKIPPED
-                    self.start_date = datetime.now()
-                    self.end_date = datetime.now()
-                    session.merge(self)
-                elif failed + upstream_failed >= len(task._upstream_list):
-                    self.state = State.UPSTREAM_FAILED
-                    self.start_date = datetime.now()
-                    self.end_date = datetime.now()
-                    session.merge(self)
+            triggered_extra_final = False
 
-            if task.trigger_rule == TR.ONE_SUCCESS and successes > 0:
-                return True
-            elif (task.trigger_rule == TR.ONE_FAILED and
-                  (failed + upstream_failed) > 0):
-                return True
-            elif (task.trigger_rule == TR.ALL_SUCCESS and
-                  successes == len(task._upstream_list)):
-                return True
-            elif (task.trigger_rule == TR.ALL_FAILED and
-                  failed + upstream_failed == len(task._upstream_list)):
-                return True
-            elif (task.trigger_rule == TR.ALL_DONE and
-                  done == len(task._upstream_list)):
-                return True
+        triggered = [x for (x, _) in evaluations]
+        if self.task.upstream_trigger_type == TT.ALL and all(triggered):
+            triggered_final = True
+        elif self.task.upstream_trigger_type == TT.ANY and any(triggered):
+            triggered_final = True
+        elif self.task.upstream_trigger_type == TT.DUMMY:
+            triggered_final = True
+        else:
+            triggered_final = False
+
+        if not triggered_final and flag_upstream_failed:
+            reasons = [reason for (_, reason) in evaluations]
+
+            skipped = [reason == State.SKIPPED for reason in reasons]
+            failed = [reason == State.FAILED or
+                      reason == State.UPSTREAM_FAILED for reason in reasons]
+
+            if all(skipped):
+                self.state = State.SKIPPED
+                self.start_date = datetime.now()
+                self.end_date = datetime.now()
+                session.merge(self)
+
+            elif all(failed):
+                self.state = State.UPSTREAM_FAILED
+                self.start_date = datetime.now()
+                self.end_date = datetime.now()
+                session.merge(self)
 
         if not main_session:
             session.commit()
             session.close()
-        return False
+
+        return triggered_final and triggered_extra_final
 
     def __repr__(self):
         return (
@@ -1440,11 +1374,40 @@ class BaseOperator(object):
             logging.warning(
                 "start_date for {} isn't datetime.datetime".format(self))
         self.end_date = end_date
+
         self.trigger_rule = trigger_rule
-        self.depends_on_past = depends_on_past
-        self.wait_for_downstream = wait_for_downstream
-        if wait_for_downstream:
-            self.depends_on_past = True
+
+        TR = TriggerRule
+
+        # Define upstream_trigger_type (TriggerType.ALL, ANY or DUMMY)
+        if self.trigger_rule in [TR.ALL_FAILED, TR.ALL_SUCCESS, TR.ALL_DONE]:
+            self.upstream_trigger_type = TriggerType.ALL
+
+        elif self.trigger_rule in [TR.ONE_FAILED, TR.ONE_SUCCESS]:
+            self.upstream_trigger_type = TriggerType.ANY
+
+        elif self.trigger_rule == TR.DUMMY:
+            self.upstream_trigger_type = TriggerType.DUMMY
+        else:
+            assert False, "Trigger rule is unknown : {}" \
+                          "".format(self.trigger_rule)
+
+        # Define upstream_trigger_state
+        if self.trigger_rule in [TR.ALL_SUCCESS, TR.ONE_SUCCESS]:
+            self.upstream_trigger_state = State.SUCCESS
+
+        elif self.trigger_rule in [TR.ALL_FAILED, TR.ONE_FAILED]:
+            self.upstream_trigger_state = State.FAILED
+
+        elif self.trigger_rule == TR.ALL_DONE:
+            # TODO : nicer comment
+            # when we add the Trigger objects, we make sure to check for
+            # ALL_DONE and add a DoneTrigger instead
+            pass
+
+        else:
+            assert False, "Trigger rule is unknown : {}" \
+                          "".format(self.trigger_rule)
 
         if schedule_interval:
             logging.warning(
@@ -1472,9 +1435,25 @@ class BaseOperator(object):
             dag.add_task(self)
             self.dag = dag
 
-        # Private attributes
-        self._upstream_list = []
-        self._downstream_list = []
+        # Private attribute containing tuples of (task, trigger) where task is
+        # the depended upon task and trigger is the trigger representing the
+        # dependency, trigger will thus contain task
+        # This list only contains triggers added through set_downstream and
+        # set_upstream, NOT depends_on_past or wait_for_downstream
+        self._upstream_tuples = []
+
+        # Private attribute containing tuples of (task, trigger) where task
+        # depends on self and trigger is the trigger representing the
+        # dependency, trigger will thus contain self
+        # This list only contains triggers added through set_downstream and
+        # set_upstream, NOT depends_on_past or wait_for_downstream
+        self._downstream_tuples = []
+
+        self.depends_on_past = depends_on_past
+        self.wait_for_downstream = wait_for_downstream
+
+        if self.wait_for_downstream:
+            self.depends_on_past = True
 
         self._comps = {
             'task_id',
@@ -1580,8 +1559,11 @@ class BaseOperator(object):
         result = cls.__new__(cls)
         memo[id(self)] = result
 
-        self._upstream_list = sorted(self._upstream_list, key=lambda x: x.task_id)
-        self._downstream_list = sorted(self._downstream_list, key=lambda x: x.task_id)
+        self._upstream_tuples = sorted(self._upstream_tuples,
+                                         key=lambda x: x[0].task_id)
+        self._downstream_tuples = sorted(self._downstream_tuples,
+                                           key=lambda x: x[0].task_id)
+
         for k, v in list(self.__dict__.items()):
             if k not in ('user_defined_macros', 'params'):
                 setattr(result, k, copy.deepcopy(v, memo))
@@ -1652,13 +1634,38 @@ class BaseOperator(object):
 
     @property
     def upstream_list(self):
-        """@property: list of tasks directly upstream"""
-        return self._upstream_list
+        """@property: list of tasks of the same schedule directly upstream"""
+        tasks = [task for (task, _) in self._upstream_tuples]
+        return list(set(tasks))
 
     @property
     def downstream_list(self):
-        """@property: list of tasks directly downstream"""
-        return self._downstream_list
+        """@property: list of tasks of the same schedule directly downstream"""
+        tasks = [task for (task, _) in self._downstream_tuples]
+        return list(set(tasks))
+
+    @property
+    def upstream_triggers(self):
+        """@property: all the triggers on which this task depends on that
+        were added through set_downstream and set_upstream only"""
+        return [trigger for (_, trigger) in self._upstream_tuples]
+
+    @property
+    def upstream_triggers_extra(self):
+        """@property: all the triggers on which this task depends on that
+        were added through depends_on_past or wait_for_downstream only"""
+        triggers = []
+
+        if self.depends_on_past:
+            trigger = Trigger(self, state=State.SUCCESS, past_executions=1)
+            triggers.append(trigger)
+
+        if self.wait_for_downstream:
+            for task in self.downstream_list:
+                trigger = Trigger(task, state=State.SUCCESS, past_executions=1)
+                triggers.append(trigger)
+
+        return triggers
 
     def clear(
             self, start_date=None, end_date=None,
@@ -1761,7 +1768,6 @@ class BaseOperator(object):
                 logging.info('Rendering template for {0}'.format(attr))
                 logging.info(content)
 
-
     def get_direct_relatives(self, upstream=False):
         """
         Get the direct relatives to the current task, upstream or
@@ -1779,44 +1785,68 @@ class BaseOperator(object):
     def task_type(self):
         return self.__class__.__name__
 
-    def append_only_new(self, l, item):
-        if any([item is t for t in l]):
-            raise AirflowException(
-                'Dependency {self}, {item} already registered'
-                ''.format(**locals()))
-        else:
-            l.append(item)
-
-    def _set_relatives(self, task_or_task_list, upstream=False):
+    def _get_task_list(self, task_or_task_list):
         try:
             task_list = list(task_or_task_list)
         except TypeError:
             task_list = [task_or_task_list]
+
         for task in task_list:
             if not isinstance(task, BaseOperator):
                 raise AirflowException('Expecting a task')
-            if upstream:
-                task.append_only_new(task._downstream_list, self)
-                self.append_only_new(self._upstream_list, task)
-            else:
-                self.append_only_new(self._downstream_list, task)
-                task.append_only_new(task._upstream_list, self)
 
-        self.detect_downstream_cycle()
+        return task_list
+
+    def add_new_trigger(self, task, trigger, upstream):
+        if upstream:
+            l = self._upstream_tuples
+        else:
+            l = self._downstream_tuples
+
+        for (task_i, trigger_i) in l:
+            if task is task_i and trigger == trigger_i:
+                raise AirflowException(
+                    'Dependency {self}, {task} already registered'
+                    ''.format(**locals()))
+        l.append((task, trigger))
 
     def set_downstream(self, task_or_task_list):
         """
-        Set a task, or a task task to be directly downstream from the current
+        Set a task, or a task list to be directly downstream from the current
         task.
         """
-        self._set_relatives(task_or_task_list, upstream=False)
+        task_list = self._get_task_list(task_or_task_list)
+
+        for task in task_list:
+            # Legacy code to maintain ALL_DONE
+            if task.trigger_rule == TriggerRule.ALL_DONE:
+                trigger = DoneTrigger(self)
+            else:
+                trigger = Trigger(self, state=task.upstream_trigger_state)
+
+            self.add_new_trigger(task, trigger, upstream=False)
+            task.add_new_trigger(self, trigger, upstream=True)
+
+        self.detect_downstream_cycle()
 
     def set_upstream(self, task_or_task_list):
         """
-        Set a task, or a task task to be directly upstream from the current
+        Set a task, or a task list to be directly upstream from the current
         task.
         """
-        self._set_relatives(task_or_task_list, upstream=True)
+        task_list = self._get_task_list(task_or_task_list)
+
+        for task in task_list:
+            # Legacy code to maintain ALL_DONE
+            if self.trigger_rule == TriggerRule.ALL_DONE:
+                trigger = DoneTrigger(task)
+            else:
+                trigger = Trigger(task, state=self.upstream_trigger_state)
+
+            task.add_new_trigger(self, trigger, upstream=False)
+            self.add_new_trigger(task, trigger, upstream=True)
+
+        self.detect_downstream_cycle()
 
     def xcom_push(
             self,
@@ -2031,19 +2061,49 @@ class DAG(object):
             start_date=start_date, end_date=end_date,
             num=num, delta=self._schedule_interval)
 
-    def following_schedule(self, dttm):
+    def directly_following_schedule(self, dttm):
         if isinstance(self._schedule_interval, six.string_types):
             cron = croniter(self._schedule_interval, dttm)
             return cron.get_next(datetime)
         elif isinstance(self._schedule_interval, timedelta):
             return dttm + self._schedule_interval
 
-    def previous_schedule(self, dttm):
+    def following_schedule(self, reference, n=1):
+        """
+        Returns the `n`th schedule after `reference`
+        :param reference: the reference schedule
+        :type reference: datetime
+        :param n: the number of schedules to go forward in time to
+        :type n: int
+        """
+        assert n >= 0, "{n} should be positive".format(**locals())
+        if n == 0:
+            return reference
+        else:
+            following = self.directly_following_schedule(reference)
+            return self.following_schedule(following, n-1)
+
+    def directly_previous_schedule(self, dttm):
         if isinstance(self._schedule_interval, six.string_types):
             cron = croniter(self._schedule_interval, dttm)
             return cron.get_prev(datetime)
         elif isinstance(self._schedule_interval, timedelta):
             return dttm - self._schedule_interval
+
+    def previous_schedule(self, reference, n=1):
+        """
+        Returns the `n`th schedule before `reference`
+        :param reference: the reference schedule
+        :type reference: datetime
+        :param n: the number of schedules to back in time to
+        :type n: int
+        """
+        assert n >= 0, "{n} should be positive".format(**locals())
+        if n == 0:
+            return reference
+        else:
+            previous = self.directly_previous_schedule(reference)
+            return self.previous_schedule(previous, n-1)
 
     @property
     def task_ids(self):
@@ -2335,10 +2395,10 @@ class DAG(object):
         for t in dag.tasks:
             # Removing upstream/downstream references to tasks that did not
             # made the cut
-            t._upstream_list = [
-                ut for ut in t._upstream_list if utils.is_in(ut, tasks)]
-            t._downstream_list = [
-                ut for ut in t._downstream_list if utils.is_in(ut, tasks)]
+            t._upstream_tuples = [tuple for tuple in t._upstream_tuples
+                                  if utils.is_in(tuple[0], tasks)]
+            t._downstream_tuples = [tuple for tuple in t._downstream_tuples
+                                    if utils.is_in(tuple[0], tasks)]
 
         return dag
 
@@ -2777,3 +2837,163 @@ class ImportError(Base):
     timestamp = Column(DateTime)
     filename = Column(String(1024))
     stacktrace = Column(Text)
+
+
+class Trigger(object):
+    """
+    Triggers represent a dependency of an operator on a range of schedules of
+    another operator.
+    * Trigger(t) depends on the state of t of the same schedule
+    * Trigger(t, 1) depends on the state of t of the previous schedule
+    * Trigger(t, n) depends on the state of t of the n previous schedules
+      (not including the current schedule)
+
+    :param task: the depended upon task
+    :type task: BaseOperator
+    :param past_executions: The number of past executions that the
+    dependant depends on. If it is left to 0, the Trigger is aimed at
+    the same schedule as the dependant. If it is set to a value > 0,
+    the Trigger will look at the corresponding past executions to
+    evaluate the Trigger.
+    :type past_executions: non negative integer
+    """
+
+    def __init__(self,
+                 task,
+                 state=State.SUCCESS,
+                 past_executions=0):
+
+        self.dag_id = task.dag_id
+        self.task_id = task.task_id
+        self.task = task
+        self.state = state
+
+        assert past_executions == 0 or past_executions == 1, \
+            "past_executions parameter must be 0 or 1"
+        self.past_executions = past_executions
+
+    def _states(self, execution_date, main_session=None):
+        """
+        Returns all the states of depended upon task instances.
+
+        :param execution_date: the date on which the trigger should be evaluated
+        :type execution_date: datetime
+        :return: the states of all depended upon task instances
+        :rtype: list of airflow.utils.State
+        """
+        TI = TaskInstance
+
+        first_date = self._compute_first_date(execution_date)
+        last_date = self._compute_last_date(execution_date)
+
+        if last_date < first_date:
+            return []
+
+        session = main_session or settings.Session()
+
+        query = session.query(TI.execution_date, TI.state).filter(
+            TI.dag_id == self.dag_id,
+            TI.task_id == self.task_id,
+            TI.execution_date >= first_date,
+            TI.execution_date <= last_date,
+        )
+
+        if not main_session:
+            session.commit()
+            session.close()
+
+        sparse_results = dict(query.all())
+        schedules = self.task.dag.date_range(start_date=first_date,
+                                             end_date=last_date)
+
+        # Filling states with Nones when the TI isn't in the DB yet
+        states = []
+        for schedule in schedules:
+            if schedule in sparse_results.keys():
+                states.append(sparse_results[schedule])
+            else:
+                states.append(None)
+
+        return states
+
+    def evaluate(self, execution_date, main_session=None):
+        """
+        Evaluates the trigger by returning the state corresponding to the
+        depended upon task instances. Schedules that are before the DAG's
+        `start_date` are ignored.
+
+        :param execution_date: the date on which the trigger should be evaluated
+        :type execution_date: datetime
+        :return: the state corresponding to the collective state of schedules
+        depended upon.
+        :rtype: airflow.utils.State
+        """
+        states = self._states(execution_date, main_session)
+
+        # If states is empty, there are no task instances to depend on
+        # e.g. a dependency on the past when the past date is < start_date
+        if not states:
+            return True, "no tasks instances to depend on"
+
+        assert len(states) == 1, "Because `past_executions` is 0 or 1, " \
+                                 "there should not be more than one state"
+
+        triggered = states[0] == self.state
+        reason = states[0]
+
+        return triggered, reason
+
+    def _compute_first_date(self, execution_date):
+        start_date = self.task.start_date
+        first_date = self.task.dag.previous_schedule(execution_date,
+                                                     self.past_executions)
+        first_possible_date = max(start_date, first_date)
+        return first_possible_date
+
+    def _compute_last_date(self, execution_date):
+        last_date = execution_date
+        # If past_executions is not 0, then the Trigger is targeting past
+        # executions only, we remove the current execution from the range
+        if self.past_executions > 0:
+            last_date = self.task.dag.previous_schedule(execution_date)
+
+        return last_date
+
+    def __repr__(self):
+        # TODO : add state ?
+        return "<Trigger: {t.dag_id}.{t.task_id}, {t.past_executions}>" \
+               "".format(t=self)
+
+    def __eq__(self, other):
+        # TODO : we don't compare state - should we ?
+        dag_id_eq = self.dag_id == other.dag_id
+        task_id_eq = self.task_id == other.task_id
+        past_exec_eq = self.past_executions == other.past_executions
+        return dag_id_eq and task_id_eq and past_exec_eq
+
+
+class DoneTrigger(Trigger):
+
+    def __init__(self, task, past_executions=0):
+        Trigger.__init__(self, task, None, past_executions)
+
+    def evaluate(self, execution_date, main_session=None):
+
+        states = self._states(execution_date, main_session)
+
+        # If states is empty, there are no task instances to depend on
+        # e.g. a dependency on the past when the past date is < start_date
+        if not states:
+            return True, "no tasks instances to depend on"
+
+        assert len(states) == 1, "Because `past_executions` is 0 or 1, " \
+                                 "there should not be more than one state"
+
+        triggered = states[0] in State.done()
+        reason = states[0]
+
+        return triggered, reason
+
+    def __repr__(self):
+        return "<DoneTrigger: {t.dag_id}.{t.task_id}, {t.past_executions}>" \
+               "".format(t=self)
