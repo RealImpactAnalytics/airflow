@@ -1648,38 +1648,24 @@ class BaseOperator(object):
     def upstream_triggers(self):
         """@property: all the triggers on which this task depends on that
         were added through set_downstream and set_upstream only"""
-        return [trigger for (_, trigger) in self.upstream_tuples]
+        return [trigger for (_, trigger) in self._upstream_tuples]
 
     @property
     def upstream_triggers_extra(self):
         """@property: all the triggers on which this task depends on that
         were added through depends_on_past or wait_for_downstream only"""
-        return [trigger for (_, trigger) in self.upstream_tuples_extra]
-
-    @property
-    def upstream_tuples(self):
-        """@property: tuples of all the (task, trigger) on which this task
-        depends on that were added through set_downstream and set_upstream
-        only"""
-        return self._upstream_tuples
-
-    @property
-    def upstream_tuples_extra(self):
-        """@property: tuples of all the (task, trigger) on which this task
-        depends on that were added through depends_on_past or
-        wait_for_downstream only"""
-        tuples = []
+        triggers = []
 
         if self.depends_on_past:
             trigger = Trigger(self, state=State.SUCCESS, past_executions=1)
-            tuples.append((self, trigger))
+            triggers.append(trigger)
 
         if self.wait_for_downstream:
             for task in self.downstream_list:
                 trigger = Trigger(task, state=State.SUCCESS, past_executions=1)
-                tuples.append((task, trigger))
+                triggers.append(trigger)
 
-        return tuples
+        return triggers
 
     def clear(
             self, start_date=None, end_date=None,
