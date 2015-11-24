@@ -308,3 +308,4 @@ def validate_order(folder, early, late):
         "The last modification time of {path_early} should be before the " \
         "last modification time of {path_late} but it was not the case." \
         "".format(**locals())
+
