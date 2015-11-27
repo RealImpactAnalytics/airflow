@@ -233,3 +233,59 @@ class BashOperatorAB_wait_for_downstream(BashOperatorAB_ds, DagBackfillTest):
 
             first_date = False
             prev_time_b = time_b
+
+
+class BashOperatorAB_range(unittest.TestCase, DagBackfillTest):
+    """
+    Tests that two bash operators linked with .set_downstream that are executed
+    over 10 days each produce 10 files in a legal order.
+
+    * A and B
+    * B depends on A
+    """
+    dates = ["2015-01-01", "2015-01-02", "2015-01-03", "2015-01-04",
+             "2015-01-05", "2015-01-06", "2015-01-07", "2015-01-08",
+             "2015-01-09", "2015-01-10"]
+
+    file_a = "{working_dir}/out.a.{date}.txt"
+    file_b = "{working_dir}/out.b.{date}.txt"
+
+    def get_dag_id(self):
+        return "bash_operator_ab_range"
+
+    def build_job(self, dag):
+        return jobs.BackfillJob(
+                dag=dag,
+                start_date=datetime(2015, 1, 1),
+                end_date=datetime(2015, 1, 10))
+
+    def post_check(self, working_dir):
+        for date in self.dates:
+
+            file_a_date = self.file_a.format(**locals())
+            file_b_date = self.file_b.format(**locals())
+
+            with open(file_a_date) as f:
+                assert "success_a\n" == f.readline(), \
+                    "The file {} doesn't contain the success line" \
+                    "".format(file_a_date)
+
+            with open(file_b_date) as f:
+                assert "success_b\n" == f.readline(), \
+                    "The file {} doesn't contain the success line" \
+                    "".format(file_b_date)
+
+        for i in range(len(self.dates)):
+            date = self.dates[i]
+            file_b_date = self.file_b.format(**locals())
+            time_b = time.ctime(os.path.getmtime(file_b_date))
+
+            # b.set_trigger(Trigger(a, past_executions=(-4, -2))
+            for offset in [-4, -3, -2]:
+                if i >= -offset:
+                    date = self.dates[i+offset]
+                    file_a_date = self.file_a.format(**locals())
+                    time_a = time.ctime(os.path.getmtime(file_a_date))
+                    assert time_a < time_b, \
+                        "File {} was not executed before file {}" \
+                        "".format(file_a_date, file_b_date)
