@@ -17,12 +17,14 @@ import sys
 # Hack to allow changing for piece of the code to behave differently while
 # the docs are being built. The main objective was to alter the
 # behavior of the utils.apply_default that was hiding function headers
+import configuration as configuration
+
 os.environ['BUILDING_AIRFLOW_DOCS'] = 'TRUE'
-from airflow import settings
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
+sys.path.insert(0, configuration.get_dags_folder() + "/src/airflow")
 
 # -- General configuration ------------------------------------------------
 

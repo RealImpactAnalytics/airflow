@@ -13,9 +13,9 @@ default_args = {
 
 dag = DAG("bash_operator_ab", default_args=default_args)
 
-# no default value for those: it is a bug to try to load this DAGs without
+# no default value for those: it is a bug to try to load this DAG without
 # preparing a tmp folder for it
-tempDir = Variable.get("unit_test_tmp_dir", deserialize_json=True)
+tempDir = Variable.get("unit_test_tmp_dir")
 
 b = BashOperator(
     task_id='echo_b',
@@ -27,7 +27,7 @@ a = BashOperator(
     bash_command='echo success_a > %s/out.a.{{ ds }}.txt' % tempDir,
     dag=dag)
 
-direction = Variable.get(key="dep_direction",
+direction = Variable.get(key="dependency_direction",
                          deserialize_json=True,
                          default_var="downstream")
 

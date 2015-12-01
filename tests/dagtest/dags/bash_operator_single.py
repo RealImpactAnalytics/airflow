@@ -13,7 +13,7 @@ default_args = {
 
 dag = DAG("bash_operator_single", default_args=default_args)
 
-# no default value for those: it is a bug to try to load this DAGs without
+# no default value for those: it is a bug to try to load this DAG without
 # preparing a tmp folder for it
 tempDir = Variable.get(key="unit_test_tmp_dir")
 

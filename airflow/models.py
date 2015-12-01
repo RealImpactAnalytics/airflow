@@ -43,7 +43,7 @@ from airflow.utils import (
 
 Base = declarative_base()
 ID_LEN = 250
-SQL_ALCHEMY_CONN = configuration.get('core', 'SQL_ALCHEMY_CONN')
+#SQL_ALCHEMY_CONN = configuration.get('core', 'SQL_ALCHEMY_CONN')
 XCOM_RETURN_KEY = 'return_value'
 
 ENCRYPTION_ON = False
@@ -54,7 +54,7 @@ try:
 except:
     pass
 
-if 'mysql' in SQL_ALCHEMY_CONN:
+if 'mysql' in configuration.get_sql_alchemy_conn():
     LongText = LONGTEXT
 else:
     LongText = Text
