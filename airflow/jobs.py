@@ -21,6 +21,7 @@ from sqlalchemy.orm.session import make_transient
 
 from airflow import executors, models, settings, utils
 from airflow import configuration
+from airflow.models import TaskInstance, DagRun
 from airflow.utils import AirflowException, State, LoggingMixin
 
 
@@ -345,7 +346,6 @@ class SchedulerJob(BaseJob):
                 filename=filename, stacktrace=stacktrace))
         session.commit()
 
-
     def schedule_dag(self, dag):
         """
         This method checks whether a new DagRun needs to be created
@@ -393,28 +393,33 @@ class SchedulerJob(BaseJob):
                 else:
                     next_run_date = min([t.start_date for t in dag.tasks])
             elif dag.schedule_interval != '@once':
-                next_run_date = dag.following_schedule(last_scheduled_run)
+                following = dag.following_schedule(last_scheduled_run)
+                next_run_date = following if following <= dag.end_date else None
+
             elif dag.schedule_interval == '@once' and not last_scheduled_run:
                 next_run_date = datetime.now()
 
-            # this structure is necessary to avoid a TypeError from concatenating
-            # NoneType
-            if dag.schedule_interval == '@once':
-                schedule_end = next_run_date
-            elif next_run_date:
-                schedule_end = dag.following_schedule(next_run_date)
+            # schedule a new DagRun if we haven't gone over dag.end_date
+            if next_run_date:
+                
+                # schedule a new DagRun if schedule_interval is @once or
+                # there's been a full schedule_interval since next_run_date
+                if dag.schedule_interval == '@once' or \
+                        dag.following_schedule(next_run_date) <= datetime.now():
 
-            if next_run_date and schedule_end and schedule_end <= datetime.now():
-                next_run = DagRun(
-                    dag_id=dag.dag_id,
-                    run_id='scheduled__' + next_run_date.isoformat(),
-                    execution_date=next_run_date,
-                    state=State.RUNNING,
-                    external_trigger=False
-                )
-                session.add(next_run)
-                session.commit()
-                return next_run
+                    self.logger.debug("Scheduling {} for {}".format(
+                        dag.dag_id, next_run_date))
+
+                    next_run = DagRun(
+                        dag_id=dag.dag_id,
+                        run_id='scheduled__' + next_run_date.isoformat(),
+                        execution_date=next_run_date,
+                        state=State.RUNNING,
+                        external_trigger=False
+                    )
+                    session.add(next_run)
+                    session.commit()
+                    return next_run
 
     def process_dag(self, dag, executor):
         """
@@ -591,8 +596,13 @@ class SchedulerJob(BaseJob):
         dagbag = models.DagBag(self.subdir, sync_to_db=True)
         executor = dagbag.executor
         executor.start()
-        i = 0
-        while not self.num_runs or self.num_runs > i:
+
+        run_id = 0
+        while not self.num_runs or self.num_runs > run_id:
+
+            run_id += 1
+            self.logger.info("starting run {}/{}".format(run_id, self.num_runs))
+
             try:
                 loop_start_dttm = datetime.now()
                 try:
@@ -600,14 +610,13 @@ class SchedulerJob(BaseJob):
                 except Exception as e:
                     self.logger.exception(e)
 
-                i += 1
                 try:
-                    if i % self.refresh_dags_every == 0:
+                    if run_id % self.refresh_dags_every == 0:
                         dagbag = models.DagBag(self.subdir, sync_to_db=True)
                     else:
                         dagbag.collect_dags(only_if_updated=True)
                 except:
-                    self.logger.error("Failed at reloading the dagbag")
+                    self.logger.exception("Failed at reloading the dagbag")
                     if statsd:
                         statsd.incr('dag_refresh_error', 1, 1)
                     sleep(5)
