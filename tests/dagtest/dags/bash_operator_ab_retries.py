@@ -15,6 +15,8 @@ default_args = {
 
 dag = DAG("bash_operator_ab_retries", default_args=default_args)
 
+# no default value for those: it is a bug to try to load this DAGs without
+# preparing a tmp folder for it
 tempDir = Variable.get("unit_test_tmp_dir", deserialize_json=True)
 
 # retry a number of ( day % 3 ) times
