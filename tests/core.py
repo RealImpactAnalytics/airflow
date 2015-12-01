@@ -382,8 +382,19 @@ class CoreTest(unittest.TestCase):
     def test_variable_set_get_round_trip_json(self):
         value = {"a": 17, "b": 47}
         Variable.set("tested_var_set_id", value, serialize_json=True)
-        assert value == Variable.get("tested_var_set_id",deserialize_json=True)
-        
+        assert value == Variable.get("tested_var_set_id", deserialize_json=True)
+
+    def test_get_non_existing_var_should_return_default(self):
+        default_value = "some default val"
+        assert default_value == Variable.get("thisIdDoesNotExist",
+                                             default_var=default_value)
+
+    def test_get_non_existing_var_should_not_deserialize_json_default(self):
+        default_value = "}{ this is a non JSON default }{"
+        assert default_value == Variable.get("thisIdDoesNotExist",
+                                             default_var=default_value,
+                                             deserialize_json=True)
+
     def test_duplicate_dependencies(self):
 
         regexp = "Dependency (.*)runme_0(.*)run_after_loop(.*) " \
