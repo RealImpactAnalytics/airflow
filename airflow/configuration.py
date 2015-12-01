@@ -5,6 +5,8 @@ from __future__ import unicode_literals
 
 from future import standard_library
 
+from airflow import settings
+
 standard_library.install_aliases()
 from builtins import str
 from configparser import ConfigParser
@@ -425,6 +427,7 @@ if not os.path.isfile(AIRFLOW_CONFIG):
 
 logging.info("Reading the config from " + AIRFLOW_CONFIG)
 
+
 def test_mode():
     conf = ConfigParserWithDefaults(defaults)
     conf.read(TEST_CONFIG_FILE)
@@ -454,8 +457,34 @@ def has_option(section, key):
 
 
 ########################
-# convenience method to access config entries
+# Convenience method to access config entries.
 
 def get_dags_folder():
     return os.path.expanduser(get('core', 'DAGS_FOLDER'))
 
+
+def get_sql_alchemy_conn():
+    return get('core', 'SQL_ALCHEMY_CONN')
+
+
+def test_mode():
+    conf = ConfigParserWithDefaults(defaults)
+    conf.read(TEST_CONFIG_FILE)
+
+
+################
+# global config init
+
+conf = None
+
+
+def load_config():
+    """
+    loads the config and triggers the connection to the SQL-alchemy backend
+    """
+    global conf
+    conf = ConfigParserWithDefaults(defaults)
+    conf.read(AIRFLOW_CONFIG)
+    settings.connect(get_sql_alchemy_conn())
+
+load_config()
