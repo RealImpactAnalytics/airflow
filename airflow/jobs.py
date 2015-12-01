@@ -60,7 +60,7 @@ from airflow.utils import asciiart
 Base = models.Base
 DagRun = models.DagRun
 ID_LEN = models.ID_LEN
-Stats = settings.Stats
+Stats = conf.Stats
 
 
 class BaseJob(Base, LoggingMixin):

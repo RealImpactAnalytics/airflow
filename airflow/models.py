@@ -80,7 +80,6 @@ from airflow.utils.trigger_rule import TriggerRule
 
 Base = declarative_base()
 ID_LEN = 250
-SQL_ALCHEMY_CONN = configuration.get('core', 'SQL_ALCHEMY_CONN')
 XCOM_RETURN_KEY = 'return_value'
 
 Stats = settings.Stats
@@ -93,7 +92,7 @@ try:
 except:
     pass
 
-if 'mysql' in SQL_ALCHEMY_CONN:
+if 'mysql' in configuration.get_sql_alchemy_conn():
     LongText = LONGTEXT
 else:
     LongText = Text
@@ -161,7 +160,7 @@ class DagBag(BaseDagBag, LoggingMixin):
             self,
             dag_folder=None,
             executor=DEFAULT_EXECUTOR,
-            include_examples=configuration.getboolean('core', 'LOAD_EXAMPLES')):
+            include_examples=None):
 
         dag_folder = dag_folder or configuration.get_dags_folder()
         self.logger.info("Filling up the DagBag from {}".format(dag_folder))
@@ -172,6 +171,11 @@ class DagBag(BaseDagBag, LoggingMixin):
         self.file_last_changed = {}
         self.executor = executor
         self.import_errors = {}
+
+        # reading the config here and not as constructor arg since config can
+        # now be reloaded
+        if include_examples is None:
+            include_examples = configuration.getboolean('core', 'LOAD_EXAMPLES')
 
         if include_examples:
             example_dag_folder = os.path.join(
