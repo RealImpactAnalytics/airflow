@@ -14,10 +14,11 @@ PARALLELISM = configuration.get('core', 'PARALLELISM')
 
 class LocalWorker(multiprocessing.Process):
 
-    def __init__(self, task_queue, result_queue):
+    def __init__(self, task_queue, result_queue, env=None):
         multiprocessing.Process.__init__(self)
         self.task_queue = task_queue
         self.result_queue = result_queue
+        self.env = env
 
     def run(self):
         while True:
@@ -29,11 +30,11 @@ class LocalWorker(multiprocessing.Process):
             logging.info("%s running %s", self.__class__.__name__, command)
             command = "exec bash -c '{0}'".format(command)
             try:
-                subprocess.Popen(command, shell=True).wait()
+                subprocess.Popen(command, shell=True, env=self.env).wait()
                 state = State.SUCCESS
             except Exception as e:
                 state = State.FAILED
-                logging.error(str(e))
+                logging.exception("failed to execute task")
                 # raise e
             self.result_queue.put((key, state))
             self.task_queue.task_done()
@@ -47,11 +48,14 @@ class LocalExecutor(BaseExecutor):
     of tasks.
     """
 
+    def __init__(self, **kwargs):
+        super(LocalExecutor, self).__init__(**kwargs)
+
     def start(self):
         self.queue = multiprocessing.JoinableQueue()
         self.result_queue = multiprocessing.Queue()
         self.workers = [
-            LocalWorker(self.queue, self.result_queue)
+            LocalWorker(self.queue, self.result_queue, self.env)
             for i in range(self.parallelism)
         ]
 
