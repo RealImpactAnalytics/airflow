@@ -15,6 +15,9 @@ class SequentialExecutor(BaseExecutor):
     Since we want airflow to work out of the box, it defaults to this
     SequentialExecutor alongside sqlite as you first install it.
     """
+
+    log = logging.getLogger(__name__)
+
     def __init__(self, **kwargs):
         super(SequentialExecutor, self).__init__(**kwargs)
         self.commands_to_run = []
@@ -24,7 +27,8 @@ class SequentialExecutor(BaseExecutor):
 
     def sync(self):
         for key, command in self.commands_to_run:
-            logging.info("Executing command: " + str(command))
+            SequentialExecutor.log.info(
+                "Executing command: {}".format(command))
             try:
                 sp = subprocess.Popen(command, shell=True, env=self.env)
                 sp.wait()

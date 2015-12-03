@@ -14,6 +14,8 @@ PARALLELISM = configuration.get('core', 'PARALLELISM')
 
 class LocalWorker(multiprocessing.Process):
 
+    logger = logging.getLogger(__name__)
+
     def __init__(self, task_queue, result_queue, env=None):
         multiprocessing.Process.__init__(self)
         self.task_queue = task_queue
@@ -27,14 +29,15 @@ class LocalWorker(multiprocessing.Process):
                 # Received poison pill, no more tasks to run
                 self.task_queue.task_done()
                 break
-            logging.info("%s running %s", self.__class__.__name__, command)
+            LocalWorker.logger.info("{} running {}".format(
+                self.__class__.__name__, command))
             command = "exec bash -c '{0}'".format(command)
             try:
                 subprocess.Popen(command, shell=True, env=self.env).wait()
                 state = State.SUCCESS
-            except Exception as e:
+            except Exception:
                 state = State.FAILED
-                logging.exception("failed to execute task")
+                LocalWorker.logger.exception("failed to execute task")
                 # raise e
             self.result_queue.put((key, state))
             self.task_queue.task_done()

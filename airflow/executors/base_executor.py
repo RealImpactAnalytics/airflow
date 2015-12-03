@@ -10,6 +10,8 @@ PARALLELISM = configuration.getint('core', 'PARALLELISM')
 
 class BaseExecutor(object):
 
+    log = logging.getLogger(__name__)
+
     def __init__(self, parallelism=PARALLELISM, env=None):
         """
         Class to derive in order to interface with executor-type systems
@@ -38,7 +40,7 @@ class BaseExecutor(object):
 
     def queue_command(self, key, command, priority=1, queue=None):
         if key not in self.queued_tasks and key not in self.running:
-            logging.info("Adding to queue: " + command)
+            BaseExecutor.log.info("Adding to queue: {}".format(command))
             self.queued_tasks[key] = (command, priority, queue)
 
     def queue_task_instance(
@@ -69,7 +71,8 @@ class BaseExecutor(object):
 
     def heartbeat(self):
         # Calling child class sync method
-        logging.debug("Calling the {} sync method".format(self.__class__))
+        BaseExecutor.log.debug(
+            "Calling the {} sync method".format(self.__class__))
         self.sync()
 
         # Triggering new jobs
@@ -78,9 +81,9 @@ class BaseExecutor(object):
         else:
             open_slots = self.parallelism - len(self.running)
 
-        logging.debug("{} running task instances".format(len(self.running)))
-        logging.debug("{} in queue".format(len(self.queued_tasks)))
-        logging.debug("{} open slots".format(open_slots))
+        BaseExecutor.log.debug("{} running task instances".format(len(self.running)))
+        BaseExecutor.log.debug("{} in queue".format(len(self.queued_tasks)))
+        BaseExecutor.log.debug("{} open slots".format(open_slots))
 
         sorted_queue = sorted(
             [(k, v) for k, v in self.queued_tasks.items()],

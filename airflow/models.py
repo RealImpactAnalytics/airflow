@@ -1965,6 +1965,8 @@ class DAG(object):
     :type max_active_runs: int
     """
 
+    logger = logging.getLogger(__name__)
+
     def __init__(
             self, dag_id,
             schedule_interval=timedelta(days=1),
@@ -2144,7 +2146,7 @@ class DAG(object):
             .all()
         )
         for run in active_runs:
-            logging.info("Checking state for {}".format(run))
+            DAG.logger.info("Checking state for {}".format(run))
             task_instances = session.query(TI).filter(
                 TI.dag_id == run.dag_id,
                 TI.task_id.in_(self.task_ids),
@@ -2153,13 +2155,13 @@ class DAG(object):
             if len(task_instances) == len(self.tasks):
                 task_states = [ti.state for ti in task_instances]
                 if State.FAILED in task_states:
-                    logging.info('Marking run {} failed'.format(run))
+                    DAG.logger.info('Marking run {} failed'.format(run))
                     run.state = State.FAILED
                 elif len(
                     set(task_states) |
                     set([State.SUCCESS, State.SKIPPED])
                 ) == 2:
-                    logging.info('Marking run {} successful'.format(run))
+                    DAG.logger.info('Marking run {} successful'.format(run))
                     run.state = State.SUCCESS
                 else:
                     active_dates.append(run.execution_date)
