@@ -7,6 +7,7 @@ import re
 import shutil
 import tempfile
 import time
+import unittest
 
 from airflow import configuration
 from airflow import executors
@@ -14,6 +15,22 @@ from airflow.configuration import TEST_CONFIG_FILE
 from airflow.jobs import BackfillJob, SchedulerJob
 from airflow.models import DagBag, Variable
 from ..core import reset
+
+def is_config_db_concurrent():
+    """
+    :return: true if this config files points sqlalchemy to a DB that support
+     concurrent access (i.e. not sqlite)
+    """
+    with open(TEST_CONFIG_FILE) as cfg:
+        for line in cfg.readlines():
+
+            if line.strip().startswith("#"):
+                continue
+
+            if "sql_alchemy_conn" in line:
+                return "sqlite://" not in line
+
+    return False
 
 
 class AbstractEndToEndTest():
@@ -62,14 +79,16 @@ class EndToEndBackfillJobTest(AbstractEndToEndTest):
         """
         raise NotImplementedError()
 
+    @unittest.skipIf(not is_config_db_concurrent(), "DB Backend must support"
+                                                    "concurrent access")
     def test_backfilljob(self):
 
         with BackFillJobRunner(self.get_backfill_params(),
                                dag_file_names=self.get_dag_file_names(),
                                context=self.get_context()) as runner:
 
-            if runner.run():
-                self.post_check(runner.working_dir)
+            runner.run()
+            self.post_check(runner.working_dir)
 
 
 class EndToEndSchedulerJobTest(AbstractEndToEndTest):
@@ -85,14 +104,16 @@ class EndToEndSchedulerJobTest(AbstractEndToEndTest):
         """
         raise NotImplementedError()
 
+    @unittest.skipIf(not is_config_db_concurrent(), "DB Backend must support"
+                                                    "concurrent access")
     def test_schedulerjob(self):
 
         with SchedulerJobRunner(self.get_schedulerjob_params(),
                                 dag_file_names=self.get_dag_file_names(),
                                 context=self.get_context()) as runner:
 
-            if runner.run():
-                self.post_check(runner.working_dir)
+            runner.run()
+            self.post_check(runner.working_dir)
 
 
 class Runner(object):
@@ -103,8 +124,7 @@ class Runner(object):
 
     def __init__(self,
                  dag_file_names,
-                 context,
-                 ref_config_file=TEST_CONFIG_FILE):
+                 context=None):
 
         self.dag_file_names = dag_file_names
 
@@ -131,8 +151,7 @@ class Runner(object):
         Variable.set("unit_test_tmp_dir", self.working_dir)
 
         self.config_file = os.path.join(self.working_dir, "airflow_IT.cfg")
-        self._create_it_config_file(ref_config_file, self.config_file,
-                                    it_dag_folder)
+        self._create_it_config_file(self.config_file, it_dag_folder)
 
         # aligns current config with test config (this of course would fail
         # if several dag tests are executed in parallel threads)
@@ -140,20 +159,12 @@ class Runner(object):
         configuration.load_config()
 
         self.dagbag = DagBag(self.working_dir, include_examples=False)
-        self.concurrent_db = is_config_db_concurrent(self.config_file)
 
     def run(self):
         """
         Starts the execution of the tested job.
-        :return: true
         """
-        if self.concurrent_db:
-            self.tested_job.run()
-            return True
-        else:
-            logging.warning("skipping execution of test since backend DB does "
-                            "not support concurrent access")
-            return False
+        self.tested_job.run()
 
     def cleanup(self):
         """
@@ -161,24 +172,20 @@ class Runner(object):
         This is called automatically if the Runner is used inside a with
         statement
         """
-        if self.tested_job:
-            logging.info("cleaning up {}".format(self.tested_job))
-            reset(self.tested_job.dag.dag_id)
-            os.system("rm -rf {}".format(self.working_dir))
-        else:
-            logging.info("(no clean up necessary)")
+        logging.info("cleaning up {}".format(self.tested_job))
+        reset(self.tested_job.dag.dag_id)
+        os.system("rm -rf {}".format(self.working_dir))
 
     ##########################
     # private methods
 
-    def _create_it_config_file(self, ref_config_file, ut_file_location,
-                               dag_folder):
+    def _create_it_config_file(self, ut_file_location, dag_folder):
         """
         Creates a custom config file for integration tests in the specified
         location, overriding the dag_folder value.
         """
 
-        with open(ref_config_file) as test_config_file:
+        with open(TEST_CONFIG_FILE) as test_config_file:
             config = test_config_file.read()
 
             config = re.sub("dags_folder =.*",
@@ -215,18 +222,17 @@ class BackFillJobRunner(Runner):
             os.system("rm -rf {}".format(self.working_dir))
             assert False, "more than one dag found in BackfillJob test"
 
-        if self.concurrent_db:
-            dag = list(self.dagbag.dags.values())[0]
-            tested_job = BackfillJob(dag=dag, **backfilljob_params)
+        self.dag = list(self.dagbag.dags.values())[0]
+        tested_job = BackfillJob(dag=self.dag, **backfilljob_params)
 
-            test_env = os.environ.copy()
-            test_env.update({"AIRFLOW_CONFIG": self.config_file})
-            tested_job.executor = executors.SequentialExecutor(env=test_env)
+        test_env = os.environ.copy()
+        test_env.update({"AIRFLOW_CONFIG": self.config_file})
+        tested_job.executor = executors.SequentialExecutor(env=test_env)
 
-            reset(tested_job.dag.dag_id)
-            tested_job.dag.clear()
+        reset(tested_job.dag.dag_id)
+        tested_job.dag.clear()
 
-            self.tested_job = tested_job
+        self.tested_job = tested_job
 
 
 class SchedulerJobRunner(Runner):
@@ -239,10 +245,9 @@ class SchedulerJobRunner(Runner):
     def __init__(self, job_params, **kwargs):
         super(SchedulerJobRunner, self).__init__(**kwargs)
 
-        if self.concurrent_db:
-            self.tested_job = SchedulerJob(subdir=self.working_dir,
-                                           **job_params)
-            self.tested_job.executor = executors.LocalExecutor()
+        self.tested_job = SchedulerJob(subdir=self.working_dir,
+                                       **job_params)
+        self.tested_job.executor = executors.LocalExecutor()
 
         # TODO: hack the start_date of the job in order to make the test
         #   outcome predictable (at the moment, start_date=now() )
@@ -250,24 +255,6 @@ class SchedulerJobRunner(Runner):
         # start_date)
 
         # TODO: make sure there is no trace of this dag ID in DB: dag_run,...
-
-
-def is_config_db_concurrent(config_file):
-    """
-    :param config_file: path to some airflow config file
-    :return: true if this config files points sqlalchemy to a DB that support
-     concurrent access (i.e. not sqlite)
-    """
-    with open(config_file) as cfg:
-        for line in cfg.readlines():
-
-            if line.strip().startswith("#"):
-                continue
-
-            if "sql_alchemy_conn" in line:
-                return "sqlite://" not in line
-
-    return False
 
 
 #############
