@@ -10,7 +10,7 @@ from .dag_tester import validate_file_content, validate_order, \
 
 
 class BashOperatorSingleOneDay(EndToEndBackfillJobTest,
-                               #EndToEndSchedulerJobTest
+                               EndToEndSchedulerJobTest,
                                unittest.TestCase):
     """
     Tests that a bash operator executed over 1 day correctly produces 1 file.

@@ -18,7 +18,7 @@ from ..core import reset
 
 def is_config_db_concurrent():
     """
-    :return: true if this config files points sqlalchemy to a DB that support
+    :return: true if this config files points sqlalchemy to a DB that supports
      concurrent access (i.e. not sqlite)
     """
     with open(TEST_CONFIG_FILE) as cfg:
@@ -79,8 +79,8 @@ class EndToEndBackfillJobTest(AbstractEndToEndTest):
         """
         raise NotImplementedError()
 
-    @unittest.skipIf(not is_config_db_concurrent(), "DB Backend must support"
-                                                    "concurrent access")
+    @unittest.skipIf(not is_config_db_concurrent(),
+                     "DB Backend must support concurrent access")
     def test_backfilljob(self):
 
         with BackFillJobRunner(self.get_backfill_params(),
@@ -104,8 +104,8 @@ class EndToEndSchedulerJobTest(AbstractEndToEndTest):
         """
         raise NotImplementedError()
 
-    @unittest.skipIf(not is_config_db_concurrent(), "DB Backend must support"
-                                                    "concurrent access")
+    @unittest.skipIf(not is_config_db_concurrent(),
+                     "DB Backend must support concurrent access")
     def test_schedulerjob(self):
 
         with SchedulerJobRunner(self.get_schedulerjob_params(),
@@ -139,26 +139,25 @@ class Runner(object):
         all_dags_folder = "{}/dags".format(os.path.dirname(__file__))
 
         self.working_dir = tempfile.mkdtemp()
-        it_dag_folder = os.path.join(self.working_dir, "dags")
-        os.mkdir(it_dag_folder)
+        self.it_dag_folder = os.path.join(self.working_dir, "dags")
+        os.mkdir(self.it_dag_folder)
         for file_name in self.dag_file_names:
             src = os.path.join(all_dags_folder, file_name)
-            shutil.copy2(src, it_dag_folder)
+            shutil.copy2(src, self.it_dag_folder)
 
         # saving the context to Variable so the child test can access it
         for key, val in self.context.items():
             Variable.set(key, val, serialize_json=True)
         Variable.set("unit_test_tmp_dir", self.working_dir)
 
-        self.config_file = os.path.join(self.working_dir, "airflow_IT.cfg")
-        self._create_it_config_file(self.config_file, it_dag_folder)
+        self.config_file = self._create_it_config_file(self.it_dag_folder)
 
         # aligns current config with test config (this of course would fail
         # if several dag tests are executed in parallel threads)
         configuration.AIRFLOW_CONFIG = self.config_file
         configuration.load_config()
 
-        self.dagbag = DagBag(self.working_dir, include_examples=False)
+        self.dagbag = DagBag(self.it_dag_folder, include_examples=False)
 
     def run(self):
         """
@@ -173,17 +172,20 @@ class Runner(object):
         statement
         """
         logging.info("cleaning up {}".format(self.tested_job))
-        reset(self.tested_job.dag.dag_id)
+        for dag in self.dagbag.dags.values():
+            reset(dag.dag_id)
         os.system("rm -rf {}".format(self.working_dir))
 
     ##########################
     # private methods
 
-    def _create_it_config_file(self, ut_file_location, dag_folder):
+    def _create_it_config_file(self, dag_folder):
         """
         Creates a custom config file for integration tests in the specified
-        location, overriding the dag_folder value.
+        location, overriding the dag_folder and heartbeat_sec values.
         """
+
+        it_file_location = os.path.join(self.working_dir, "airflow_IT.cfg")
 
         with open(TEST_CONFIG_FILE) as test_config_file:
             config = test_config_file.read()
@@ -192,11 +194,15 @@ class Runner(object):
                             "dags_folder = {}".format(dag_folder), config)
             config = re.sub("job_heartbeat_sec =.*",
                             "job_heartbeat_sec = 1", config)
+            config = re.sub("load_examples =.*",
+                            "load_examples = False", config)
 
             # this is the config file that will be used by the child process
             # config_location = "{}/dag_test_airflow.cfg".format(AIRFLOW_HOME)
-            with open(ut_file_location, "w") as cfg_file:
+            with open(it_file_location, "w") as cfg_file:
                 cfg_file.write(config)
+
+        return it_file_location
 
     ###########################
     # loan pattern to make any runner easily usable inside a with statement
@@ -223,16 +229,14 @@ class BackFillJobRunner(Runner):
             assert False, "more than one dag found in BackfillJob test"
 
         self.dag = list(self.dagbag.dags.values())[0]
-        tested_job = BackfillJob(dag=self.dag, **backfilljob_params)
+        self.tested_job = BackfillJob(dag=self.dag, **backfilljob_params)
 
         test_env = os.environ.copy()
         test_env.update({"AIRFLOW_CONFIG": self.config_file})
-        tested_job.executor = executors.SequentialExecutor(env=test_env)
+        self.tested_job.executor = executors.SequentialExecutor(env=test_env)
 
-        reset(tested_job.dag.dag_id)
-        tested_job.dag.clear()
-
-        self.tested_job = tested_job
+        reset(self.tested_job.dag.dag_id)
+        self.tested_job.dag.clear()
 
 
 class SchedulerJobRunner(Runner):
@@ -245,8 +249,7 @@ class SchedulerJobRunner(Runner):
     def __init__(self, job_params, **kwargs):
         super(SchedulerJobRunner, self).__init__(**kwargs)
 
-        self.tested_job = SchedulerJob(subdir=self.working_dir,
-                                       **job_params)
+        self.tested_job = SchedulerJob(subdir=self.it_dag_folder, **job_params)
         self.tested_job.executor = executors.LocalExecutor()
 
         # TODO: hack the start_date of the job in order to make the test
