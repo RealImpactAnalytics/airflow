@@ -9,7 +9,7 @@ from time import sleep
 import unittest
 
 from airflow import configuration
-from airflow.models import Variable
+from airflow.models import Variable, DagRun
 
 configuration.test_mode()
 from airflow import jobs, models, DAG, utils, operators, hooks, macros, settings
@@ -18,7 +18,7 @@ from airflow.bin import cli
 from airflow.www import app as application
 from airflow.settings import Session
 from lxml import html
-from airflow.utils import AirflowException
+from airflow.utils import AirflowException, provide_session
 
 NUM_EXAMPLE_DAGS = 7
 DEV_NULL = '/dev/null'
@@ -35,12 +35,10 @@ except ImportError:
     import pickle
 
 
-def reset(dag_id=TEST_DAG_ID):
-    session = Session()
-    tis = session.query(models.TaskInstance).filter_by(dag_id=dag_id)
-    tis.delete()
-    session.commit()
-    session.close()
+@provide_session
+def reset(dag_id=TEST_DAG_ID, session=None):
+    session.query(models.TaskInstance).filter_by(dag_id=dag_id).delete()
+    session.query(DagRun).filter(DagRun.dag_id == dag_id).delete()
 
 reset()
 

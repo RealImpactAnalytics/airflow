@@ -14,6 +14,7 @@ class BashOperatorSingleOneDay(EndToEndBackfillJobTest,
                                unittest.TestCase):
     """
     Tests that a bash operator executed over 1 day correctly produces 1 file.
+    This is validate with a BackfillJob as well as a SchedulerJob
     """
 
     def get_dag_file_names(self):
@@ -26,16 +27,13 @@ class BashOperatorSingleOneDay(EndToEndBackfillJobTest,
     def get_schedulerjob_params(self):
         return {"num_runs": 1}
 
-    def get_context(self):
-        # this is useless for the test, but validates that the test
-        # framework can handle a None context
-        return None
-
     def post_check(self, working_dir):
         validate_file_content(working_dir, "out.2015-01-01.txt", "success\n")
 
 
-class BashOperatorSingle3Days(EndToEndBackfillJobTest, unittest.TestCase):
+class BashOperatorSingle3Days(EndToEndBackfillJobTest,
+                              EndToEndSchedulerJobTest,
+                              unittest.TestCase):
     """
     Tests that a bash operator executed over 3 days correctly produces 3 files.
     """
@@ -49,13 +47,18 @@ class BashOperatorSingle3Days(EndToEndBackfillJobTest, unittest.TestCase):
         return {"start_date": datetime(2015, 1, 1),
                 "end_date": datetime(2015, 1, 3)}
 
+    def get_schedulerjob_params(self):
+        return {"num_runs": 3}
+
     def post_check(self, working_dir):
         for date in self.dates:
             out_file = "out.{date}.txt".format(**locals())
             validate_file_content(working_dir, out_file, "success\n")
 
 
-class BashOperatorABDownStream(EndToEndBackfillJobTest, unittest.TestCase):
+class BashOperatorABDownStream(EndToEndBackfillJobTest,
+                               EndToEndSchedulerJobTest,
+                               unittest.TestCase):
     """
     Tests that two bash operators linked with .set_downstream that are executed
     over 10 days each produce 10 files in a legal order.
@@ -76,6 +79,9 @@ class BashOperatorABDownStream(EndToEndBackfillJobTest, unittest.TestCase):
     def get_backfill_params(self):
         return {"start_date": datetime(2015, 1, 1),
                 "end_date": datetime(2015, 1, 10)}
+
+    def get_schedulerjob_params(self):
+        return {"num_runs": 12}
 
     def get_context(self):
         return {"dependency_direction": "downstream"}
@@ -128,6 +134,10 @@ class BashOperatorABRetries(BashOperatorABDownStream, unittest.TestCase):
         return {"depends_on_past": False,
                 "wait_for_downstream": False}
 
+    def get_schedulerjob_params(self):
+        return {"num_runs": 20}
+
+
 
 class BashOperatorABDependsOnPast(BashOperatorABDownStream, unittest.TestCase):
     """
@@ -164,6 +174,9 @@ class BashOperatorABDependsOnPast(BashOperatorABDownStream, unittest.TestCase):
                 validate_order(working_dir, prev_file_b_date, file_b_date)
 
             prev_file_b_date = file_b_date
+
+    def get_schedulerjob_params(self):
+        return {"num_runs": 30}
 
 
 class BashOperatorABWaitForDownstream(BashOperatorABDownStream,
@@ -202,3 +215,6 @@ class BashOperatorABWaitForDownstream(BashOperatorABDownStream,
                 validate_order(working_dir, prev_file_b_date, file_a_date)
 
             prev_file_b_date = file_b_date
+
+    def get_schedulerjob_params(self):
+        return {"num_runs": 60}

@@ -11,9 +11,10 @@ import unittest
 
 from airflow import configuration
 from airflow import executors
+from airflow import settings
 from airflow.configuration import TEST_CONFIG_FILE
 from airflow.jobs import BackfillJob, SchedulerJob
-from airflow.models import DagBag, Variable
+from airflow.models import DagBag, Variable, DagRun, DAG
 from ..core import reset
 
 def is_config_db_concurrent():
@@ -135,9 +136,7 @@ class Runner(object):
         self.tested_job = None
 
         # preparing a folder where to execute the tests, with all the DAGs
-        # temp folder where to execute the tests
-        all_dags_folder = "{}/dags".format(os.path.dirname(__file__))
-
+        all_dags_folder = os.path.join(os.path.dirname(__file__), "dags")
         self.working_dir = tempfile.mkdtemp()
         self.it_dag_folder = os.path.join(self.working_dir, "dags")
         os.mkdir(self.it_dag_folder)
@@ -159,6 +158,12 @@ class Runner(object):
 
         self.dagbag = DagBag(self.it_dag_folder, include_examples=False)
 
+        # environment variables for the child processes launched by the test
+        self.test_env = os.environ.copy()
+        self.test_env.update({"AIRFLOW_CONFIG": self.config_file})
+
+        self._reset_dags()
+
     def run(self):
         """
         Starts the execution of the tested job.
@@ -172,9 +177,18 @@ class Runner(object):
         statement
         """
         logging.info("cleaning up {}".format(self.tested_job))
-        for dag in self.dagbag.dags.values():
-            reset(dag.dag_id)
+        self._reset_dags()
         os.system("rm -rf {}".format(self.working_dir))
+
+    def _reset_dags(self):
+        for dag_id in self.dag_ids():
+            reset(dag_id)
+
+    def dag_ids(self):
+        """
+        :return: the set of all dag_ids tested by the test
+        """
+        return self.dagbag.dags.keys()
 
     ##########################
     # private methods
@@ -204,6 +218,7 @@ class Runner(object):
 
         return it_file_location
 
+
     ###########################
     # loan pattern to make any runner easily usable inside a with statement
 
@@ -225,17 +240,14 @@ class BackFillJobRunner(Runner):
         super(BackFillJobRunner, self).__init__(**kwargs)
 
         if self.dagbag.size() > 1:
-            os.system("rm -rf {}".format(self.working_dir))
+            self.cleanup()
             assert False, "more than one dag found in BackfillJob test"
 
         self.dag = list(self.dagbag.dags.values())[0]
         self.tested_job = BackfillJob(dag=self.dag, **backfilljob_params)
+        self.tested_job.executor = executors.SequentialExecutor(
+            env=self.test_env)
 
-        test_env = os.environ.copy()
-        test_env.update({"AIRFLOW_CONFIG": self.config_file})
-        self.tested_job.executor = executors.SequentialExecutor(env=test_env)
-
-        reset(self.tested_job.dag.dag_id)
         self.tested_job.dag.clear()
 
 
@@ -250,14 +262,7 @@ class SchedulerJobRunner(Runner):
         super(SchedulerJobRunner, self).__init__(**kwargs)
 
         self.tested_job = SchedulerJob(subdir=self.it_dag_folder, **job_params)
-        self.tested_job.executor = executors.LocalExecutor()
-
-        # TODO: hack the start_date of the job in order to make the test
-        #   outcome predictable (at the moment, start_date=now() )
-        # (or not, see SchedulerJob.schedule: does not seem to look at
-        # start_date)
-
-        # TODO: make sure there is no trace of this dag ID in DB: dag_run,...
+        self.tested_job.executor = executors.LocalExecutor(env=self.test_env)
 
 
 #############
