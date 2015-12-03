@@ -302,6 +302,14 @@ def clear(args):
     if args.end_date:
         args.end_date = dateutil.parser.parse(args.end_date)
 
+    if args.follow_triggers_lower_date:
+        args.follow_triggers_lower_date = \
+            dateutil.parser.parse(args.follow_triggers_lower_date)
+
+    if args.follow_triggers_upper_date:
+        args.follow_triggers_upper_date = \
+            dateutil.parser.parse(args.follow_triggers_upper_date)
+
     if args.task_regex:
         dag = dag.sub_dag(
             task_regex=args.task_regex,
@@ -486,27 +494,45 @@ def get_parser():
     parser_clear.add_argument(
         "-t", "--task_regex",
         help="The regex to filter specific task_ids to clear (optional)")
+
     parser_clear.add_argument(
         "-s", "--start_date", help="Override start_date YYYY-MM-DD")
     parser_clear.add_argument(
         "-e", "--end_date", help="Override end_date YYYY-MM-DD")
+
+    parser_clear.add_argument(
+        "-ld", "--follow_triggers_lower_date",
+        help="Override the lower bound date that following upstream "
+             "dependencies should go until YYYY-MM-DD")
+
+    parser_clear.add_argument(
+        "-ud", "--follow_triggers_upper_date",
+        help="Override the upper bound date that following downstream "
+             "dependencies should go until YYYY-MM-DD")
+
     ht = "Include upstream tasks"
     parser_clear.add_argument(
         "-u", "--upstream", help=ht, action="store_true")
+
     ht = "Only failed jobs"
     parser_clear.add_argument(
         "-f", "--only_failed", help=ht, action="store_true")
+
     ht = "Only running jobs"
     parser_clear.add_argument(
         "-r", "--only_running", help=ht, action="store_true")
+
     ht = "Include downstream tasks"
     parser_clear.add_argument(
         "-d", "--downstream", help=ht, action="store_true")
+
     parser_clear.add_argument(
         "-sd", "--subdir", help=subdir_help,
         default=DAGS_FOLDER)
+
     parser_clear.add_argument(
         "-c", "--no_confirm", help=ht, action="store_true")
+
     parser_clear.set_defaults(func=clear)
 
     ht = "Trigger a DAG"
