@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from airflow import DAG
-from airflow.models import Variable
+from airflow.models import Variable, Trigger
 from airflow.operators.bash_operator import BashOperator
 
 default_args = {
@@ -33,5 +33,12 @@ c = BashOperator(
     dag=dag)
 
 a.set_downstream(b)
-b.set_downstream(c)
 
+add_trigger_on_past = Variable.get('add_trigger_on_past',
+                                   default_var=False,
+                                   deserialize_json=True)
+
+if add_trigger_on_past:
+    c.set_trigger(Trigger(b, past_executions=(-1, 0)))
+else:
+    c.set_upstream(b)
