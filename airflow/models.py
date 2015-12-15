@@ -44,8 +44,6 @@ from airflow.utils import (
 
 Base = declarative_base()
 ID_LEN = 250
-SQL_ALCHEMY_CONN = configuration.get('core', 'SQL_ALCHEMY_CONN')
-DAGS_FOLDER = os.path.expanduser(configuration.get('core', 'DAGS_FOLDER'))
 XCOM_RETURN_KEY = 'return_value'
 
 ENCRYPTION_ON = False
@@ -56,7 +54,7 @@ try:
 except:
     pass
 
-if 'mysql' in SQL_ALCHEMY_CONN:
+if 'mysql' in configuration.get_sql_alchemy_conn():
     LongText = LONGTEXT
 else:
     LongText = Text
@@ -117,17 +115,24 @@ class DagBag(LoggingMixin):
             self,
             dag_folder=None,
             executor=DEFAULT_EXECUTOR,
-            include_examples=configuration.getboolean('core', 'LOAD_EXAMPLES'),
+            include_examples=None,
             sync_to_db=False):
 
-        dag_folder = dag_folder or DAGS_FOLDER
+        dag_folder = dag_folder or configuration.get_dags_folder()
         self.logger.info("Filling up the DagBag from {}".format(dag_folder))
+
         self.dag_folder = dag_folder
         self.dags = {}
         self.sync_to_db = sync_to_db
         self.file_last_changed = {}
         self.executor = executor
         self.import_errors = {}
+
+        # reading the config here and not as constructor arg since config can
+        # now be reloaded
+        if include_examples is None:
+            include_examples = configuration.getboolean('core', 'LOAD_EXAMPLES')
+
         if include_examples:
             example_dag_folder = os.path.join(
                 os.path.dirname(__file__),
@@ -588,6 +593,7 @@ class TaskInstance(Base):
         if task_start_date:
             cmd += "-s " + task_start_date.isoformat() + ' '
         if not pickle_id and self.task.dag and self.task.dag.full_filepath:
+            DAGS_FOLDER = configuration.get_dags_folder()
             cmd += "-sd DAGS_FOLDER/{self.task.dag.filepath} "
         return cmd.format(**locals())
 
@@ -2072,7 +2078,7 @@ class DAG(LoggingMixin):
         """
         File location of where the dag object is instantiated
         """
-        fn = self.full_filepath.replace(DAGS_FOLDER + '/', '')
+        fn = self.full_filepath.replace(configuration.get_dags_folder() + '/', '')
         fn = fn.replace(os.path.dirname(__file__) + '/', '')
         return fn
 
@@ -2560,7 +2566,6 @@ class Variable(Base):
         session.flush()
 
 
-
 class XCom(Base):
     """
     Base class for XCom objects.
@@ -2725,12 +2730,13 @@ class DagRun(Base):
     def __repr__(self):
         return (
             '<DagRun {dag_id} @ {execution_date}: {run_id}, '
-            'externally triggered: {external_trigger}>'
+            'externally triggered: {external_trigger}, state: {state}>'
         ).format(
             dag_id=self.dag_id,
             execution_date=self.execution_date,
             run_id=self.run_id,
-            external_trigger=self.external_trigger)
+            external_trigger=self.external_trigger,
+            state=self.state)
 
     @classmethod
     def id_for_date(klass, date, prefix=ID_FORMAT_PREFIX):
