@@ -16,6 +16,7 @@ python:
 env:
   global:
     - TRAVIS_CACHE=$HOME/.travis_cache/
+    - NIGHTLIES=false
   matrix:
     - TOX_ENV=py27-cdh-airflow_backend_mysql
     - TOX_ENV=py27-cdh-airflow_backend_sqlite

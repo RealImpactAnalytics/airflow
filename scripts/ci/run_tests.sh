@@ -12,6 +12,14 @@ pwd
 
 mkdir ~/airflow/
 
+echo "CHECKING env variables"
+echo "TRAVIS"
+echo "${TRAVIS}"
+echo "TRAVIS_CACHE"
+echo "${TRAVIS_CACHE}"
+echo "NIGHTLIES"
+echo "${NIGHTLIES}"
+
 if [ "${TRAVIS}" ]; then
     echo "Using travis airflow.cfg"
     DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
