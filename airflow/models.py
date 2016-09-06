@@ -82,7 +82,7 @@ Base = declarative_base()
 ID_LEN = 250
 XCOM_RETURN_KEY = 'return_value'
 
-Stats = settings.Stats
+Stats = configuration.Stats
 
 ENCRYPTION_ON = False
 try:

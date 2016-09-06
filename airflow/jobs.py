@@ -43,7 +43,7 @@ from airflow import executors, models, settings
 from airflow import configuration as conf
 from airflow.exceptions import AirflowException
 from airflow.models import DagRun
-from airflow.settings import Stats
+from airflow.configuration import Stats
 from airflow.ti_deps.dep_context import RUN_DEPS, DepContext
 from airflow.utils.state import State
 from airflow.utils.db import provide_session, pessimistic_connection_handling
@@ -298,7 +298,7 @@ class DagFileProcessor(AbstractDagFileProcessor):
                 log_format = settings.LOG_FORMAT_WITH_THREAD_NAME
                 settings.configure_logging(log_format=log_format)
                 # Re-configure the ORM engine as there are issues with multiple processes
-                settings.configure_orm()
+                conf.configure_orm()
 
                 # Change the thread name to differentiate log lines. This is
                 # really a separate process, but changing the name of the
@@ -453,7 +453,7 @@ class SchedulerJob(BaseJob):
             self,
             dag_id=None,
             dag_ids=None,
-            subdir=models.DAGS_FOLDER,
+            subdir=conf.get_dags_folder(),
             num_runs=-1,
             file_process_interval=conf.getint('scheduler',
                                               'min_file_process_interval'),

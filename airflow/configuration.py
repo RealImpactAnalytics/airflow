@@ -33,6 +33,9 @@ from builtins import str
 from collections import OrderedDict
 from configparser import ConfigParser
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import scoped_session, sessionmaker
+
 # show Airflow's deprecation warnings
 warnings.filterwarnings(
     action='default', category=DeprecationWarning, module='airflow')
@@ -569,6 +572,9 @@ class AirflowConfigParser(ConfigParser):
     def getfloat(self, section, key):
         return float(self.get(section, key))
 
+    def get_sql_alchemy_conn(self):
+        return self.get('core', 'SQL_ALCHEMY_CONN')
+
     def read(self, filenames):
         ConfigParser.read(self, filenames)
         self._validate()
@@ -707,6 +713,27 @@ if not os.path.isfile(AIRFLOW_CONFIG):
 
 logging.info("Reading the config from " + AIRFLOW_CONFIG)
 
+conf = None
+
+
+def load_config():
+    """
+    loads the config and triggers the connection to the SQL-alchemy backend
+    """
+    global conf
+    conf = AirflowConfigParser()
+    conf.read(AIRFLOW_CONFIG)
+    configure_orm()
+
+
+def configure_orm():
+    settings.configure_orm(conf.get_sql_alchemy_conn(),
+                           conf.getint('core', 'SQL_ALCHEMY_POOL_SIZE'),
+                           conf.getint('core', 'SQL_ALCHEMY_POOL_RECYCLE'))
+
+
+load_config()
+
 
 def load_test_config():
     """
@@ -766,27 +793,6 @@ def get_sql_alchemy_conn():
 
 ################
 # global config init
-
-conf = None
-
-
-def test_mode():
-    conf = AirflowConfigParser()
-    conf.read(TEST_CONFIG_FILE)
-
-
-def load_config():
-    """
-    loads the config and triggers the connection to the SQL-alchemy backend
-    """
-    global conf
-    conf = AirflowConfigParser()
-    conf.read(AIRFLOW_CONFIG)
-    settings.connect(get_sql_alchemy_conn(),
-                     conf.getint('core', 'SQL_ALCHEMY_POOL_SIZE'),
-                     conf.getint('core', 'SQL_ALCHEMY_POOL_RECYCLE'))
-
-load_config()
 
 
 def as_dict(display_source=False, display_sensitive=False):

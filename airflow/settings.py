@@ -48,30 +48,6 @@ LOG_FORMAT_WITH_THREAD_NAME = (
 SIMPLE_LOG_FORMAT = '%(asctime)s %(levelname)s - %(message)s'
 
 
-engine = None
-Session = None
-
-
-def connect(sql_alchemy_conn, pool_size, pool_recycle):
-    """
-    builds the Session object to connect to the SQL-alchemy backend.
-    """
-    global Session, engine
-
-    if Session:
-        Session.remove()
-
-    engine_args = {}
-    if 'sqlite' not in sql_alchemy_conn:
-        # Engine args not supported by sqlite
-        engine_args['pool_size'] = pool_size
-        engine_args['pool_recycle'] = pool_recycle
-
-    engine = create_engine(sql_alchemy_conn, **engine_args)
-    Session = scoped_session(sessionmaker(autocommit=False, autoflush=False,
-                                          bind=engine))
-
-
 def policy(task_instance):
     """
     This policy setting allows altering task instances right before they
@@ -108,17 +84,16 @@ engine = None
 Session = None
 
 
-def configure_orm():
+def configure_orm(sql_alchemy_conn, pool_size, pool_recycle):
     global engine
     global Session
     engine_args = {}
-    if 'sqlite' not in SQL_ALCHEMY_CONN:
+    if 'sqlite' not in sql_alchemy_conn:
         # Engine args not supported by sqlite
-        engine_args['pool_size'] = conf.getint('core', 'SQL_ALCHEMY_POOL_SIZE')
-        engine_args['pool_recycle'] = conf.getint('core',
-                                                  'SQL_ALCHEMY_POOL_RECYCLE')
+        engine_args['pool_size'] = pool_size
+        engine_args['pool_recycle'] = pool_recycle
 
-    engine = create_engine(SQL_ALCHEMY_CONN, **engine_args)
+    engine = create_engine(sql_alchemy_conn, **engine_args)
     Session = scoped_session(
         sessionmaker(autocommit=False, autoflush=False, bind=engine))
 
@@ -129,4 +104,3 @@ except:
     pass
 
 configure_logging()
-configure_orm()
