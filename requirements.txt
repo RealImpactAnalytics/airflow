@@ -1,5 +1,5 @@
 alembic
-boto
+#boto
 celery
 chartkick
 cryptography
@@ -16,17 +16,17 @@ flask-cache
 flask-login
 flower
 future
-google-api-python-client
+#google-api-python-client
 gunicorn
-hive-thrift-py
+#hive-thrift-py
 httplib2
-ipython
+#ipython
 jinja2
 markdown
 nose
 nose-exclude
 oauth2client
-pandas
+#pandas
 pygments
 pyhive
 pydruid
@@ -57,4 +57,4 @@ pykerberos
 bcrypt
 flask-bcrypt
 mock
-hdfs
+#hdfs
