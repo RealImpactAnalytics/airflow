@@ -95,6 +95,7 @@ class SparkSubmitOperator(BaseOperator):
                  num_executors=None,
                  application_args=None,
                  verbose=False,
+                 track_driver_state=False,
                  *args,
                  **kwargs):
         super(SparkSubmitOperator, self).__init__(*args, **kwargs)
@@ -118,6 +119,7 @@ class SparkSubmitOperator(BaseOperator):
         self._num_executors = num_executors
         self._application_args = application_args
         self._verbose = verbose
+        self._track_driver_state = track_driver_state
         self._hook = None
         self._conn_id = conn_id
 
@@ -145,7 +147,8 @@ class SparkSubmitOperator(BaseOperator):
             name=self._name,
             num_executors=self._num_executors,
             application_args=self._application_args,
-            verbose=self._verbose
+            verbose=self._verbose,
+            track_driver_state=self._track_driver_state
         )
         self._hook.submit(self._application)
 
