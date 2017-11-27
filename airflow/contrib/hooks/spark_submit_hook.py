@@ -15,6 +15,7 @@
 import os
 import subprocess
 import re
+import time
 
 from airflow.hooks.base_hook import BaseHook
 from airflow.exceptions import AirflowException
@@ -265,7 +266,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
                                     universal_newlines=True,
                                     **kwargs)
 
-        self._process_log(iter(self._sp.stdout.readline, ''))
+        self._process_spark_submit_log(iter(self._sp.stdout.readline, ''))
         returncode = self._sp.wait()
 
         if returncode:
@@ -275,15 +276,14 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
                 )
             )
 
-        self.log.debug("Starting to track driver")
-        self.log.debug(self._track_driver_state)
+        self.log.debug("Should track driver: {}".format(self._track_driver_state))
 
         # We want the Airflow job to wait until the Spark driver is finished
         if self._track_driver_state:
             if self._driver_id is None:
                 # TODO: Improve failure log when spark submit fails
                 raise AirflowException(
-                    "Something went wrong when executing the spark submit command"
+                    "No driver id is known: something went wrong when executing the spark submit command"
                 )
 
             self._driver_status = "RUNNING"
@@ -294,7 +294,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
                     "ERROR : Driver {} badly exited with status {}".format(self._driver_id, self._driver_status)
                 )
 
-    def _process_log(self, itr):
+    def _process_spark_submit_log(self, itr):
         """
         Processes the log files and extracts useful information out of it
 
@@ -314,12 +314,25 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
                 match_driver_id = re.search('(driver-[0-9\-]+)', line)
                 if match_driver_id:
                     self._driver_id = match_driver_id.groups()[0]
+                    self.log.info("identified spark driver id: {}".format(self._driver_id))
 
-                if "driverState" in line:
-                    self._driver_status = line.split(' : ')[1].replace(',', '').replace('\"', '').strip()
+            self.log.info("spark submit log: {}".format(line))   
 
-            # Pass to logging
-            self.log.info(line)
+
+    def _process_spark_status_log(self, itr):
+        """
+        parses the logs of the spark status query process
+
+        :param itr: An iterator which iterates over the input of the subprocess
+        """
+        # Consume the iterator
+        for line in itr:
+            line = line.strip()
+
+            if "driverState" in line:
+                self._driver_status = line.split(' : ')[1].replace(',', '').replace('\"', '').strip()
+
+            self.log.info("spark status log: {}".format(line))
 
     def _start_driver_state_tracking(self):
         """
@@ -331,20 +344,24 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         # TODO: Add a timeout mechanism
         while self._driver_status == "RUNNING":
 
+            self.log.debug("polling state of spark driver with id {}".format(self._driver_id))
+
             poll_drive_state_cmd = self._build_track_driver_state_command()
-            self._sp = subprocess.Popen(poll_drive_state_cmd,
+            status_process = subprocess.Popen(poll_drive_state_cmd,
                                         stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT,
                                         bufsize=-1,
                                         universal_newlines=True)
 
-            self._process_log(iter(self._sp.stdout.readline, ''))
+            self._process_spark_status_log(iter(status_process.stdout.readline, ''))
             returncode = self._sp.wait()
 
             if returncode:
                 raise AirflowException(
-                    "Failed to poll for the driver state"
+                    "Failed to poll for the driver state: returncode = {}".format(returncode)
                     )
+
+            time.sleep(1)
 
     # TODO: Send kill command to cluster
     def on_kill(self):
