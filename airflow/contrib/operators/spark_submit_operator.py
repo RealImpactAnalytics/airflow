@@ -68,6 +68,8 @@ class SparkSubmitOperator(BaseOperator):
     :type application_args: list
     :param verbose: Whether to pass the verbose flag to spark-submit process for debugging
     :type verbose: bool
+    :param track_driver_state: Whether to track the state of a driver after a spark-submit to a cluster
+    :type track_driver_state: bool
     """
     template_fields = ('_name', '_application_args','_packages')
     ui_color = WEB_COLORS['LIGHTORANGE']
