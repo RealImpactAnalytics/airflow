@@ -13,7 +13,6 @@
 # limitations under the License.
 #
 import six
-import sys
 import unittest
 
 from airflow import configuration, models
@@ -45,6 +44,7 @@ class TestSparkSubmitHook(unittest.TestCase):
         'name': 'spark-job',
         'num_executors': 10,
         'verbose': True,
+        'track_driver_state': True,
         'driver_memory': '3g',
         'java_class': 'com.foo.bar.AppMain',
         'application_args': [
@@ -100,13 +100,19 @@ class TestSparkSubmitHook(unittest.TestCase):
                 conn_id='spark_binary_and_home_set', conn_type='spark',
                 host='yarn', extra='{"spark-home": "/path/to/spark_home", "spark-binary": "custom-spark-submit"}')
         )
+        db.merge_conn(
+            models.Connection(
+                conn_id='spark_standalone_cluster', conn_type='spark',
+                host='spark://spark-standalone-master:6066',
+                extra='{"spark-home": "/path/to/spark_home", "deploy-mode": "cluster"}')
+        )
 
-    def test_build_command(self):
+    def test__build_spark_submit_command(self):
         # Given
         hook = SparkSubmitHook(**self._config)
 
         # When
-        cmd = hook._build_command(self._spark_job_file)
+        cmd = hook._build_spark_submit_command(self._spark_job_file)
 
         # Then
         expected_build_cmd = [
@@ -157,7 +163,7 @@ class TestSparkSubmitHook(unittest.TestCase):
 
         # When
         connection = hook._resolve_connection()
-        cmd = hook._build_command(self._spark_job_file)
+        cmd = hook._build_spark_submit_command(self._spark_job_file)
 
         # Then
         dict_cmd = self.cmd_args_to_dict(cmd)
@@ -175,7 +181,7 @@ class TestSparkSubmitHook(unittest.TestCase):
 
         # When
         connection = hook._resolve_connection()
-        cmd = hook._build_command(self._spark_job_file)
+        cmd = hook._build_spark_submit_command(self._spark_job_file)
 
         # Then
         dict_cmd = self.cmd_args_to_dict(cmd)
@@ -194,7 +200,7 @@ class TestSparkSubmitHook(unittest.TestCase):
 
         # When
         connection = hook._resolve_connection()
-        cmd = hook._build_command(self._spark_job_file)
+        cmd = hook._build_spark_submit_command(self._spark_job_file)
 
         # Then
         dict_cmd = self.cmd_args_to_dict(cmd)
@@ -212,7 +218,7 @@ class TestSparkSubmitHook(unittest.TestCase):
 
         # When
         connection = hook._resolve_connection()
-        cmd = hook._build_command(self._spark_job_file)
+        cmd = hook._build_spark_submit_command(self._spark_job_file)
 
         # Then
         dict_cmd = self.cmd_args_to_dict(cmd)
@@ -232,7 +238,7 @@ class TestSparkSubmitHook(unittest.TestCase):
 
         # When
         connection = hook._resolve_connection()
-        cmd = hook._build_command(self._spark_job_file)
+        cmd = hook._build_spark_submit_command(self._spark_job_file)
 
         # Then
         expected_spark_connection = {"master": "yarn://yarn-master",
@@ -249,7 +255,7 @@ class TestSparkSubmitHook(unittest.TestCase):
 
         # When
         connection = hook._resolve_connection()
-        cmd = hook._build_command(self._spark_job_file)
+        cmd = hook._build_spark_submit_command(self._spark_job_file)
 
         # Then
         expected_spark_connection = {"master": "yarn://yarn-master",
@@ -266,7 +272,7 @@ class TestSparkSubmitHook(unittest.TestCase):
 
         # When
         connection = hook._resolve_connection()
-        cmd = hook._build_command(self._spark_job_file)
+        cmd = hook._build_spark_submit_command(self._spark_job_file)
 
         # Then
         expected_spark_connection = {"master": "yarn",
@@ -283,7 +289,7 @@ class TestSparkSubmitHook(unittest.TestCase):
 
         # When
         connection = hook._resolve_connection()
-        cmd = hook._build_command(self._spark_job_file)
+        cmd = hook._build_spark_submit_command(self._spark_job_file)
 
         # Then
         expected_spark_connection = {"master": "yarn",
@@ -294,7 +300,24 @@ class TestSparkSubmitHook(unittest.TestCase):
         self.assertEqual(connection, expected_spark_connection)
         self.assertEqual(cmd[0], '/path/to/spark_home/bin/custom-spark-submit')
 
-    def test_process_log(self):
+    def test_resolve_connection_spark_standalone_cluster_connection(self):
+        # Given
+        hook = SparkSubmitHook(conn_id='spark_standalone_cluster')
+
+        # When
+        connection = hook._resolve_connection()
+        cmd = hook._build_spark_submit_command(self._spark_job_file)
+
+        # Then
+        expected_spark_connection = {"master": "spark://spark-standalone-master:6066",
+                                     "spark_binary": "spark-submit",
+                                     "deploy_mode": "cluster",
+                                     "queue": None,
+                                     "spark_home": "/path/to/spark_home"}
+        self.assertEqual(connection, expected_spark_connection)
+        self.assertEqual(cmd[0], '/path/to/spark_home/bin/spark-submit')
+
+    def test_process_spark_submit_log_yarn(self):
         # Given
         hook = SparkSubmitHook(conn_id='spark_yarn_cluster')
         log_lines = [
@@ -305,14 +328,52 @@ class TestSparkSubmitHook(unittest.TestCase):
             'INFO Client: Submitting application application_1486558679801_1820 to ResourceManager'
         ]
         # When
-        hook._process_log(log_lines)
+        hook._process_spark_submit_log(log_lines)
 
         # Then
 
         self.assertEqual(hook._yarn_application_id, 'application_1486558679801_1820')
 
+    def test_process_spark_submit_log_standalone_cluster(self):
+        # Given
+        hook = SparkSubmitHook(conn_id='spark_standalone_cluster', track_driver_state=True)
+        log_lines = [
+            'Running Spark using the REST application submission protocol.',
+            '17/11/28 11:14:15 INFO RestSubmissionClient: Submitting a request to launch an application in spark://spark-standalone-master:6066',
+            '17/11/28 11:14:15 INFO RestSubmissionClient: Submission successfully created as driver-20171128111415-0001. Polling submission state...'
+        ]
+        # When
+        hook._process_spark_submit_log(log_lines)
+
+        # Then
+
+        self.assertEqual(hook._driver_id, 'driver-20171128111415-0001')
+
+    def test_process_spark_driver_status_log(self):
+        # Given
+        hook = SparkSubmitHook(conn_id='spark_standalone_cluster', track_driver_state=True)
+        log_lines = [
+            'Submitting a request for the status of submission driver-20171128111415-0001 in spark://spark-standalone-master:6066',
+            '17/11/28 11:15:37 INFO RestSubmissionClient: Server responded with SubmissionStatusResponse:',
+            '{',
+            '"action" : "SubmissionStatusResponse",',
+            '"driverState" : "RUNNING",',
+            '"serverSparkVersion" : "1.6.0",',
+            '"submissionId" : "driver-20171128111415-0001",',
+            '"success" : true,',
+            '"workerHostPort" : "172.18.0.7:38561",',
+            '"workerId" : "worker-20171128110741-172.18.0.7-38561"',
+            '}'
+        ]
+        # When
+        hook._process_spark_status_log(log_lines)
+
+        # Then
+
+        self.assertEqual(hook._driver_status, 'RUNNING')
+
     @patch('airflow.contrib.hooks.spark_submit_hook.subprocess.Popen')
-    def test_spark_process_on_kill(self, mock_popen):
+    def test_yarn_process_on_kill(self, mock_popen):
         # Given
         mock_popen.return_value.stdout = six.StringIO('stdout')
         mock_popen.return_value.stderr = six.StringIO('stderr')
@@ -326,7 +387,7 @@ class TestSparkSubmitHook(unittest.TestCase):
             'INFO Client: Submitting application application_1486558679801_1820 to ResourceManager'
         ]
         hook = SparkSubmitHook(conn_id='spark_yarn_cluster')
-        hook._process_log(log_lines)
+        hook._process_spark_submit_log(log_lines)
         hook.submit()
 
         # When
@@ -334,6 +395,26 @@ class TestSparkSubmitHook(unittest.TestCase):
 
         # Then
         self.assertIn(call(['yarn', 'application', '-kill', 'application_1486558679801_1820'], stderr=-1, stdout=-1), mock_popen.mock_calls)
+
+    def test_standalone_cluster_process_on_kill(self):
+        # Given
+        log_lines = [
+            'Running Spark using the REST application submission protocol.',
+            '17/11/28 11:14:15 INFO RestSubmissionClient: Submitting a request to launch an application in spark://spark-standalone-master:6066',
+            '17/11/28 11:14:15 INFO RestSubmissionClient: Submission successfully created as driver-20171128111415-0001. Polling submission state...'
+        ]
+        hook = SparkSubmitHook(conn_id='spark_standalone_cluster', track_driver_state=True)
+        hook._process_spark_submit_log(log_lines)
+
+        # When
+        kill_cmd = hook._build_spark_driver_kill_command()
+
+        # Then
+        self.assertEqual(kill_cmd[0], '/path/to/spark_home/bin/spark-submit')
+        self.assertEqual(kill_cmd[1], '--master')
+        self.assertEqual(kill_cmd[2], 'spark://spark-standalone-master:6066')
+        self.assertEqual(kill_cmd[3], '--kill')
+        self.assertEqual(kill_cmd[4], 'driver-20171128111415-0001')
 
 
 if __name__ == '__main__':
