@@ -69,8 +69,6 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
     :type application_args: list
     :param verbose: Whether to pass the verbose flag to spark-submit process for debugging
     :type verbose: bool
-    :param track_driver_state: Whether to track the state of a driver after a spark-submit to a cluster
-    :type track_driver_state: bool
     """
     def __init__(self,
                  conf=None,
@@ -92,8 +90,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
                  name='default-name',
                  num_executors=None,
                  application_args=None,
-                 verbose=False,
-                 track_driver_state=False):
+                 verbose=False):
         self._conf = conf
         self._conn_id = conn_id
         self._files = files
@@ -120,7 +117,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         self._connection = self._resolve_connection()
         self._is_yarn = 'yarn' in self._connection['master']
 
-        self._track_driver_state = track_driver_state
+        self._track_driver_state = 'spark://' in self._connection['master'] and self._connection['deploy_mode'] == 'cluster'
         self._driver_id = None
         self._driver_status = None
 
@@ -361,9 +358,6 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
             FAILED: The driver exited non-zero and was not supervised
             ERROR: Unable to run or restart due to an unrecoverable error (e.g. missing jar file)
         """
-
-        # TODO: Add a timeout mechanism
-        # TODO: Add a timeout when the driver stays in SUBMITTED state for too long
         # Keep polling as long as the driver is processing
         while self._driver_status not in ["FINISHED", "UNKNOWN", "KILLED", "FAILED", "ERROR"]:
 
@@ -420,7 +414,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
             if self._yarn_application_id:
                 self.log.info('Killing application {} on YARN'.format(self._yarn_application_id))
 
-                kill_cmd = "yarn application -kill {0}".format(self._yarn_application_id).split()
+                kill_cmd = "yarn application -kill {}".format(self._yarn_application_id).split()
                 yarn_kill = subprocess.Popen(kill_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
                 self.log.info("YARN killed with return code: %s", yarn_kill.wait())
