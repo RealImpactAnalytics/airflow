@@ -44,7 +44,6 @@ class TestSparkSubmitHook(unittest.TestCase):
         'name': 'spark-job',
         'num_executors': 10,
         'verbose': True,
-        'track_driver_state': True,
         'driver_memory': '3g',
         'java_class': 'com.foo.bar.AppMain',
         'application_args': [
@@ -336,7 +335,7 @@ class TestSparkSubmitHook(unittest.TestCase):
 
     def test_process_spark_submit_log_standalone_cluster(self):
         # Given
-        hook = SparkSubmitHook(conn_id='spark_standalone_cluster', track_driver_state=True)
+        hook = SparkSubmitHook(conn_id='spark_standalone_cluster')
         log_lines = [
             'Running Spark using the REST application submission protocol.',
             '17/11/28 11:14:15 INFO RestSubmissionClient: Submitting a request to launch an application in spark://spark-standalone-master:6066',
@@ -351,7 +350,7 @@ class TestSparkSubmitHook(unittest.TestCase):
 
     def test_process_spark_driver_status_log(self):
         # Given
-        hook = SparkSubmitHook(conn_id='spark_standalone_cluster', track_driver_state=True)
+        hook = SparkSubmitHook(conn_id='spark_standalone_cluster')
         log_lines = [
             'Submitting a request for the status of submission driver-20171128111415-0001 in spark://spark-standalone-master:6066',
             '17/11/28 11:15:37 INFO RestSubmissionClient: Server responded with SubmissionStatusResponse:',
@@ -403,7 +402,7 @@ class TestSparkSubmitHook(unittest.TestCase):
             '17/11/28 11:14:15 INFO RestSubmissionClient: Submitting a request to launch an application in spark://spark-standalone-master:6066',
             '17/11/28 11:14:15 INFO RestSubmissionClient: Submission successfully created as driver-20171128111415-0001. Polling submission state...'
         ]
-        hook = SparkSubmitHook(conn_id='spark_standalone_cluster', track_driver_state=True)
+        hook = SparkSubmitHook(conn_id='spark_standalone_cluster')
         hook._process_spark_submit_log(log_lines)
 
         # When
