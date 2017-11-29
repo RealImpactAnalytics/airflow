@@ -318,7 +318,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
             # if we run in standalone cluster mode and we want to track the driver state
             # we need to extract the driver id from the logs. This allows us to poll for
             # the state using the driver id. Also, we can kill the driver when needed.
-            if self._track_driver_state and not self._is_yarn and self._connection['deploy_mode'] == 'cluster':
+            if self._track_driver_state and not self._driver_id and not self._is_yarn and self._connection['deploy_mode'] == 'cluster':
                 match_driver_id = re.search('(driver-[0-9\-]+)', line)
                 if match_driver_id:
                     self._driver_id = match_driver_id.groups()[0]
