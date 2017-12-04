@@ -106,7 +106,7 @@ class TestSparkSubmitHook(unittest.TestCase):
                 extra='{"spark-home": "/path/to/spark_home", "deploy-mode": "cluster"}')
         )
 
-    def test__build_spark_submit_command(self):
+    def test_build_spark_submit_command(self):
         # Given
         hook = SparkSubmitHook(**self._config)
 
@@ -155,6 +155,37 @@ class TestSparkSubmitHook(unittest.TestCase):
 
         # Then
         self.assertEqual(mock_popen.mock_calls[0], call(['spark-submit', '--master', 'yarn', '--name', 'default-name', ''], stderr=-2, stdout=-1, universal_newlines=True, bufsize=-1))
+
+    def test_resolve_should_track_driver_status(self):
+        # Given
+        hook_default = SparkSubmitHook(conn_id='')
+        hook_spark_yarn_cluster = SparkSubmitHook(conn_id='spark_yarn_cluster')
+        hook_spark_default_mesos = SparkSubmitHook(conn_id='spark_default_mesos')
+        hook_spark_home_set = SparkSubmitHook(conn_id='spark_home_set')
+        hook_spark_home_not_set = SparkSubmitHook(conn_id='spark_home_not_set')
+        hook_spark_binary_set = SparkSubmitHook(conn_id='spark_binary_set')
+        hook_spark_binary_and_home_set = SparkSubmitHook(conn_id='spark_binary_and_home_set')
+        hook_spark_standalone_cluster = SparkSubmitHook(conn_id='spark_standalone_cluster')
+
+        # When
+        should_track_driver_status_default = hook_default._resolve_should_track_driver_status()
+        should_track_driver_status_spark_yarn_cluster = hook_spark_yarn_cluster._resolve_should_track_driver_status()
+        should_track_driver_status_spark_default_mesos = hook_spark_default_mesos._resolve_should_track_driver_status()
+        should_track_driver_status_spark_home_set = hook_spark_home_set._resolve_should_track_driver_status()
+        should_track_driver_status_spark_home_not_set = hook_spark_home_not_set._resolve_should_track_driver_status()
+        should_track_driver_status_spark_binary_set = hook_spark_binary_set._resolve_should_track_driver_status()
+        should_track_driver_status_spark_binary_and_home_set = hook_spark_binary_and_home_set._resolve_should_track_driver_status()
+        should_track_driver_status_spark_standalone_cluster = hook_spark_standalone_cluster._resolve_should_track_driver_status()
+
+        # Then
+        self.assertEqual(should_track_driver_status_default, False)
+        self.assertEqual(should_track_driver_status_spark_yarn_cluster, False)
+        self.assertEqual(should_track_driver_status_spark_default_mesos, False)
+        self.assertEqual(should_track_driver_status_spark_home_set, False)
+        self.assertEqual(should_track_driver_status_spark_home_not_set, False)
+        self.assertEqual(should_track_driver_status_spark_binary_set, False)
+        self.assertEqual(should_track_driver_status_spark_binary_and_home_set, False)
+        self.assertEqual(should_track_driver_status_spark_standalone_cluster, True)
 
     def test_resolve_connection_yarn_default(self):
         # Given
