@@ -117,9 +117,12 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         self._connection = self._resolve_connection()
         self._is_yarn = 'yarn' in self._connection['master']
 
-        self._track_driver_state = 'spark://' in self._connection['master'] and self._connection['deploy_mode'] == 'cluster'
+        self._should_track_driver_status = self._resolve_should_track_driver_status()
         self._driver_id = None
         self._driver_status = None
+
+    def _resolve_should_track_driver_status(self):
+        return 'spark://' in self._connection['master'] and self._connection['deploy_mode'] == 'cluster'
 
     def _resolve_connection(self):
         # Build from connection master or default to yarn if not available
@@ -154,13 +157,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
     def get_conn(self):
         pass
 
-    def _build_spark_submit_command(self, application):
-        """
-        Construct the spark-submit command to execute.
-        :param application: command to append to the spark-submit command
-        :type application: str
-        :return: full command to be executed
-        """
+    def _get_spark_binary_path(self):
         # If the spark_home is passed then build the spark-submit executable path using
         # the spark_home; otherwise assume that spark-submit is present in the path to
         # the executing user
@@ -168,6 +165,17 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
             connection_cmd = [os.path.join(self._connection['spark_home'], 'bin', self._connection['spark_binary'])]
         else:
             connection_cmd = [self._connection['spark_binary']]
+
+        return connection_cmd
+
+    def _build_spark_submit_command(self, application):
+        """
+        Construct the spark-submit command to execute.
+        :param application: command to append to the spark-submit command
+        :type application: str
+        :return: full command to be executed
+        """
+        connection_cmd = self._get_spark_binary_path()
 
         # The url ot the spark master
         connection_cmd += ["--master", self._connection['master']]
@@ -225,19 +233,13 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
 
         return connection_cmd
 
-    def _build_track_driver_state_command(self):
+    def _build_track_driver_status_command(self):
         """
-        Construct the command to poll the driver state.
+        Construct the command to poll the driver status.
 
         :return: full command to be executed
         """
-        # If the spark_home is passed then build the spark-submit executable path using
-        # the spark_home; otherwise assume that spark-submit is present in the path to
-        # the executing user
-        if self._connection['spark_home']:
-            connection_cmd = [os.path.join(self._connection['spark_home'], 'bin', self._connection['spark_binary'])]
-        else:
-            connection_cmd = [self._connection['spark_binary']]
+        connection_cmd = self._get_spark_binary_path()
 
         # The url ot the spark master
         connection_cmd += ["--master", self._connection['master']]
@@ -246,7 +248,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         if self._driver_id:
             connection_cmd += ["--status", self._driver_id]
 
-        self.log.debug("Poll driver state cmd: %s", connection_cmd)
+        self.log.debug("Poll driver status cmd: %s", connection_cmd)
 
         return connection_cmd
 
@@ -276,20 +278,20 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
                 )
             )
 
-        self.log.debug("Should track driver: {}".format(self._track_driver_state))
+        self.log.debug("Should track driver: {}".format(self._should_track_driver_status))
 
         # We want the Airflow job to wait until the Spark driver is finished
-        if self._track_driver_state:
+        if self._should_track_driver_status:
             if self._driver_id is None:
                 raise AirflowException(
                     "No driver id is known: something went wrong when executing the spark submit command"
                 )
 
-            # We start with the SUBMITTED status as initial state
+            # We start with the SUBMITTED status as initial status
             self._driver_status = "SUBMITTED"
 
-            # Start tracking the driver state (blocking function)
-            self._start_driver_state_tracking()
+            # Start tracking the driver status (blocking function)
+            self._start_driver_status_tracking()
 
             if self._driver_status != "FINISHED":
                 raise AirflowException(
@@ -315,10 +317,10 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
                 if match:
                     self._yarn_application_id = match.groups()[0]
 
-            # if we run in standalone cluster mode and we want to track the driver state
+            # if we run in standalone cluster mode and we want to track the driver status
             # we need to extract the driver id from the logs. This allows us to poll for
-            # the state using the driver id. Also, we can kill the driver when needed.
-            if self._track_driver_state and not self._driver_id and not self._is_yarn and self._connection['deploy_mode'] == 'cluster':
+            # the status using the driver id. Also, we can kill the driver when needed.
+            if self._should_track_driver_status and not self._driver_id and not self._is_yarn and self._connection['deploy_mode'] == 'cluster':
                 match_driver_id = re.search('(driver-[0-9\-]+)', line)
                 if match_driver_id:
                     self._driver_id = match_driver_id.groups()[0]
@@ -336,24 +338,24 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         for line in itr:
             line = line.strip()
 
-            # Check if the log line is about the driver state and extract the state.
+            # Check if the log line is about the driver status and extract the status.
             if "driverState" in line:
                 self._driver_status = line.split(' : ')[1].replace(',', '').replace('\"', '').strip()
 
             self.log.debug("spark driver status log: {}".format(line))
 
-    def _start_driver_state_tracking(self):
+    def _start_driver_status_tracking(self):
         """
-        Polls the driver based on self._driver_id to get the state.
-        Finish successfully when the state is FINISHED.
-        Finish failed when the state is ERROR/UNKNOWN/KILLED/FAILED.
+        Polls the driver based on self._driver_id to get the status.
+        Finish successfully when the status is FINISHED.
+        Finish failed when the status is ERROR/UNKNOWN/KILLED/FAILED.
 
-        Possible states:
+        Possible status:
             SUBMITTED: Submitted but not yet scheduled on a worker
             RUNNING: Has been allocated to a worker to run
             FINISHED: Previously ran and exited cleanly
             RELAUNCHING: Exited non-zero or due to worker failure, but has not yet started running again
-            UNKNOWN: The state of the driver is temporarily not known due to master failure recovery
+            UNKNOWN: The status of the driver is temporarily not known due to master failure recovery
             KILLED: A user manually killed this driver
             FAILED: The driver exited non-zero and was not supervised
             ERROR: Unable to run or restart due to an unrecoverable error (e.g. missing jar file)
@@ -361,10 +363,10 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         # Keep polling as long as the driver is processing
         while self._driver_status not in ["FINISHED", "UNKNOWN", "KILLED", "FAILED", "ERROR"]:
 
-            self.log.debug("polling state of spark driver with id {}".format(self._driver_id))
+            self.log.debug("polling status of spark driver with id {}".format(self._driver_id))
 
-            poll_drive_state_cmd = self._build_track_driver_state_command()
-            status_process = subprocess.Popen(poll_drive_state_cmd,
+            poll_drive_status_cmd = self._build_track_driver_status_command()
+            status_process = subprocess.Popen(poll_drive_status_cmd,
                                               stdout=subprocess.PIPE,
                                               stderr=subprocess.STDOUT,
                                               bufsize=-1,
@@ -375,7 +377,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
 
             if returncode:
                 raise AirflowException(
-                    "Failed to poll for the driver state: returncode = {}".format(returncode)
+                    "Failed to poll for the driver status: returncode = {}".format(returncode)
                     )
 
             # Sleep for 1 second as we do not want to spam the cluster
@@ -407,6 +409,9 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         return connection_cmd
 
     def on_kill(self):
+
+        self.log.debug("Kill Command is being called")
+
         if self._sp and self._sp.poll() is None:
             self.log.info('Sending kill signal to %s', self._connection['spark_binary'])
             self._sp.kill()
@@ -419,7 +424,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
 
                 self.log.info("YARN killed with return code: %s", yarn_kill.wait())
 
-        if self._track_driver_state and not self._is_yarn and self._connection['deploy_mode'] == 'cluster':
+        if self._should_track_driver_status and not self._is_yarn and self._connection['deploy_mode'] == 'cluster':
             if self._driver_id:
                 self.log.info('Killing driver {} on cluster'.format(self._driver_id))
 
