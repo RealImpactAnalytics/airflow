@@ -111,7 +111,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         self._num_executors = num_executors
         self._application_args = application_args
         self._verbose = verbose
-        self._sp = None
+        self._submit_sp = None
         self._yarn_application_id = None
 
         self._connection = self._resolve_connection()
@@ -261,15 +261,15 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         :param kwargs: extra arguments to Popen (see subprocess.Popen)
         """
         spark_submit_cmd = self._build_spark_submit_command(application)
-        self._sp = subprocess.Popen(spark_submit_cmd,
-                                    stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT,
-                                    bufsize=-1,
-                                    universal_newlines=True,
-                                    **kwargs)
+        self._submit_sp = subprocess.Popen(spark_submit_cmd,
+                                           stdout=subprocess.PIPE,
+                                           stderr=subprocess.STDOUT,
+                                           bufsize=-1,
+                                           universal_newlines=True,
+                                           **kwargs)
 
-        self._process_spark_submit_log(iter(self._sp.stdout.readline, ''))
-        returncode = self._sp.wait()
+        self._process_spark_submit_log(iter(self._submit_sp.stdout.readline, ''))
+        returncode = self._submit_sp.wait()
 
         if returncode:
             raise AirflowException(
@@ -320,7 +320,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
             # if we run in standalone cluster mode and we want to track the driver status
             # we need to extract the driver id from the logs. This allows us to poll for
             # the status using the driver id. Also, we can kill the driver when needed.
-            if self._should_track_driver_status and not self._driver_id and not self._is_yarn and self._connection['deploy_mode'] == 'cluster':
+            if self._should_track_driver_status and not self._driver_id:
                 match_driver_id = re.search('(driver-[0-9\-]+)', line)
                 if match_driver_id:
                     self._driver_id = match_driver_id.groups()[0]
@@ -373,7 +373,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
                                               universal_newlines=True)
 
             self._process_spark_status_log(iter(status_process.stdout.readline, ''))
-            returncode = self._sp.wait()
+            returncode = status_process.wait()
 
             if returncode:
                 raise AirflowException(
@@ -412,9 +412,9 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
 
         self.log.debug("Kill Command is being called")
 
-        if self._sp and self._sp.poll() is None:
+        if self._submit_sp and self._submit_sp.poll() is None:
             self.log.info('Sending kill signal to %s', self._connection['spark_binary'])
-            self._sp.kill()
+            self._submit_sp.kill()
 
             if self._yarn_application_id:
                 self.log.info('Killing application {} on YARN'.format(self._yarn_application_id))
@@ -424,7 +424,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
 
                 self.log.info("YARN killed with return code: %s", yarn_kill.wait())
 
-        if self._should_track_driver_status and not self._is_yarn and self._connection['deploy_mode'] == 'cluster':
+        if self._should_track_driver_status:
             if self._driver_id:
                 self.log.info('Killing driver {} on cluster'.format(self._driver_id))
 
