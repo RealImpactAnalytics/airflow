@@ -2546,7 +2546,7 @@ class LocalTaskJob(BaseJob):
 
     def on_kill(self):
         self.log.debug("LocalTask on kill")
-        self.task_runner._task_instance.on_kill()
+        self.task_runner._task_instance.task.on_kill()
         self.task_runner.terminate()
         self.task_runner.on_finish()
 
