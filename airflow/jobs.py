@@ -117,7 +117,9 @@ class BaseJob(Base, LoggingMixin):
         job = session.query(BaseJob).filter(BaseJob.id == self.id).first()
         job.end_date = datetime.utcnow()
         try:
+            self.log.debug('Calling onKill on job itself')
             self.on_kill()
+            self.log.debug('Done debugging')
         except:
             self.log.error('on_kill() method failed')
         session.merge(job)
@@ -158,6 +160,8 @@ class BaseJob(Base, LoggingMixin):
             session.commit()
 
         if job.state == State.SHUTDOWN:
+            self.log.debug('In SHUTDOWN state')
+            self.log.debug('Calling onKill')
             self.kill()
 
         # Figure out how long to sleep for
