@@ -128,6 +128,7 @@ class TestSparkSubmitOperator(unittest.TestCase):
         self.assertEqual(expected_dict['name'], operator._name)
         self.assertEqual(expected_dict['num_executors'], operator._num_executors)
         self.assertEqual(expected_dict['verbose'], operator._verbose)
+        self.assertEqual(expected_dict['track_driver_state'], operator._track_driver_state)
         self.assertEqual(expected_dict['java_class'], operator._java_class)
         self.assertEqual(expected_dict['driver_memory'], operator._driver_memory)
         self.assertEqual(expected_dict['application_args'], operator._application_args)
