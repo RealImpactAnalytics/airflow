@@ -234,7 +234,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         if self._application_args:
             connection_cmd += self._application_args
 
-        self.log.debug("Spark-Submit cmd: %s", connection_cmd)
+        self.log.info("Spark-Submit cmd: %s", connection_cmd)
 
         return connection_cmd
 
