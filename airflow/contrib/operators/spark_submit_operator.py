@@ -145,7 +145,7 @@ class SparkSubmitOperator(BaseOperator):
             name=self._name,
             num_executors=self._num_executors,
             application_args=self._application_args,
-            verbose=self._verbose,
+            verbose=self._verbose
         )
         self._hook.submit(self._application)
 

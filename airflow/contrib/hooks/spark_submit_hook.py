@@ -122,6 +122,11 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         self._driver_status = None
 
     def _resolve_should_track_driver_status(self):
+        """
+        Determines whether or not this hook should poll the spark driver status through subsequent
+        spark-submit status requests after the initial spark-submit request
+        :return: if the driver status should be tracked
+        """
         return 'spark://' in self._connection['master'] and self._connection['deploy_mode'] == 'cluster'
 
     def _resolve_connection(self):
@@ -247,6 +252,9 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         # The driver id so we can poll for its status
         if self._driver_id:
             connection_cmd += ["--status", self._driver_id]
+        else:
+            raise AirflowException(
+                "Invalid status: attempted to poll driver status but no driver id is known. Giving up.")
 
         self.log.debug("Poll driver status cmd: %s", connection_cmd)
 
@@ -303,7 +311,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         Processes the log files and extracts useful information out of it.
 
         Remark: If the driver needs to be tracked for its status, the log-level of the spark deploy needs to be
-        at least INFO (log4j.logger.org.apache.spark.deploy.rest=INFO)
+        at least INFO (log4j.logger.org.apache.spark.deploy=INFO)
 
         :param itr: An iterator which iterates over the input of the subprocess
         """
@@ -363,6 +371,9 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         # Keep polling as long as the driver is processing
         while self._driver_status not in ["FINISHED", "UNKNOWN", "KILLED", "FAILED", "ERROR"]:
 
+            # Sleep for 1 second as we do not want to spam the cluster
+            time.sleep(1)
+
             self.log.debug("polling status of spark driver with id {}".format(self._driver_id))
 
             poll_drive_status_cmd = self._build_track_driver_status_command()
@@ -379,9 +390,6 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
                 raise AirflowException(
                     "Failed to poll for the driver status: returncode = {}".format(returncode)
                     )
-
-            # Sleep for 1 second as we do not want to spam the cluster
-            time.sleep(1)
 
     def on_kill(self):
 
