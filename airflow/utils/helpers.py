@@ -117,7 +117,6 @@ def as_tuple(obj):
 def as_flattened_list(iterable):
     """
     Return an iterable with one level flattened
-
     >>> as_flattened_list((('blue', 'red'), ('green', 'yellow', 'pink')))
     ['blue', 'red', 'green', 'yellow', 'pink']
     """
@@ -127,11 +126,8 @@ def as_flattened_list(iterable):
 def chain(*tasks):
     """
     Given a number of tasks, builds a dependency chain.
-
     chain(task_1, task_2, task_3, task_4)
-
     is equivalent to
-
     task_1.set_downstream(task_2)
     task_2.set_downstream(task_3)
     task_3.set_downstream(task_4)
@@ -142,7 +138,6 @@ def chain(*tasks):
 
 def pprinttable(rows):
     """Returns a pretty ascii table from tuples
-
     If namedtuple are used, the table will have headers
     """
     if not rows:
@@ -192,7 +187,7 @@ def kill_using_shell(logger, pid, signal=signal.SIGTERM):
         else:
             args = ["kill", "-{}".format(int(signal)), str(pid)]
         # PID may not exist and return a non-zero error code
-        logger.error(subprocess.check_output(args, close_fds=True))
+        logger.info(subprocess.check_output(args, close_fds=True))
         logger.info("Killed process {} with signal {}".format(pid, signal))
         return True
     except psutil.NoSuchProcess as e:
@@ -206,15 +201,17 @@ def kill_using_shell(logger, pid, signal=signal.SIGTERM):
 
 def kill_process_tree(logger, pid, timeout=DEFAULT_TIME_TO_WAIT_AFTER_SIGTERM):
     """
-    TODO(saguziel): also kill the root process after killing descendants
-  
     Kills the process's descendants. Kills using the `kill`
     shell command so that it can change users. Note: killing via PIDs
     has the potential to the wrong process if the process dies and the
     PID gets recycled in a narrow time window.
-
     :param logger: logger
     :type logger: logging.Logger
+    :param pid: process id of the root process
+    :type pid: int
+    :param timeout: time (seconds) to wait on a process to terminate before
+                    attempting to SIGKILL
+    :type timeout: int
     """
     try:
         root_process = psutil.Process(pid)
@@ -224,47 +221,45 @@ def kill_process_tree(logger, pid, timeout=DEFAULT_TIME_TO_WAIT_AFTER_SIGTERM):
 
     # Check child processes to reduce cases where a child process died but
     # the PID got reused.
-    descendant_processes = [x for x in root_process.children(recursive=True)
-                            if x.is_running()]
+    running_descendant_processes = [x for x in root_process.children(recursive=True)
+                                    if x.is_running()]
 
-    if len(descendant_processes) != 0:
+    if len(running_descendant_processes) != 0:
         logger.info("Terminating descendant processes of {} PID: {}"
-                    .format(root_process.cmdline(),
-                            root_process.pid))
-        temp_processes = descendant_processes[:]
-        for descendant in temp_processes:
+                    .format(root_process.cmdline(), root_process.pid))
+        for descendant in running_descendant_processes:
             logger.info("Terminating descendant process {} PID: {}"
                         .format(descendant.cmdline(), descendant.pid))
-            if not kill_using_shell(logger, descendant.pid, signal.SIGTERM):
-                descendant_processes.remove(descendant)
+            kill_using_shell(logger, descendant.pid, signal.SIGTERM)
 
-        logger.info("Waiting up to {}s for processes to exit..."
-                    .format(timeout))
-        try:
-            psutil.wait_procs(descendant_processes, timeout)
-            logger.info("Done waiting")
-        except psutil.TimeoutExpired:
-            logger.warning("Ran out of time while waiting for "
-                           "processes to exit")
-        # Then SIGKILL
-        descendant_processes = [x for x in root_process.children(recursive=True)
-                                if x.is_running()]
+        logger.info("Waiting up to {}s for processes to exit...".format(timeout))
+        _, running_descendant_processes = psutil.wait_procs(running_descendant_processes,
+                                                            timeout)
+        logger.info("Done waiting")
 
-        if len(descendant_processes) > 0:
-            temp_processes = descendant_processes[:]
-            for descendant in temp_processes:
+        #  SIGKILL any process that is still alive
+        if len(running_descendant_processes) > 0:
+            for descendant in running_descendant_processes:
                 logger.info("Killing descendant process {} PID: {}"
                             .format(descendant.cmdline(), descendant.pid))
-                if not kill_using_shell(logger, descendant.pid, signal.SIGKILL):
-                    descendant_processes.remove(descendant)
-                else:
-                    descendant.wait()
+                kill_using_shell(logger, descendant.pid, signal.SIGKILL)
             logger.info("Killed all descendant processes of {} PID: {}"
-                        .format(root_process.cmdline(),
-                                root_process.pid))
+                        .format(root_process.cmdline(), root_process.pid))
     else:
         logger.debug("There are no descendant processes to kill")
 
+    logger.info("Terminating root process {} PID {}".format(
+                root_process.cmdline(), root_process.pid))
+    if kill_using_shell(logger, root_process.pid, signal.SIGTERM):
+        try:
+            root_process.wait(timeout=timeout)
+        except psutil.TimeoutExpired:
+            logger.warning("Ran out of time while waiting for root process to exit. "
+                           "Killing process instead.")
+            kill_using_shell(logger, root_process.pid, signal.SIGKILL)
+
+    # Wait for all processes to be killed
+    psutil.wait_procs([root_process] + running_descendant_processes)
 
 class AirflowImporter(object):
     """
@@ -272,12 +267,9 @@ class AirflowImporter(object):
     allows Airflow to support ``from airflow.operators import BashOperator``
     even though BashOperator is actually in
     ``airflow.operators.bash_operator``.
-
     The importer also takes over for the parent_module by wrapping it. This is
     required to support attribute-based usage:
-
     .. code:: python
-
         from airflow import operators
         operators.BashOperator(...)
     """
@@ -302,13 +294,9 @@ class AirflowImporter(object):
     def _build_attribute_modules(module_attributes):
         """
         Flips and flattens the module_attributes dictionary from:
-
             module => [Attribute, ...]
-
         To:
-
             Attribute => module
-
         This is useful so that we can find the module to use, given an
         attribute.
         """
@@ -358,15 +346,11 @@ class AirflowImporter(object):
         """
         Get an attribute from the wrapped module. If the attribute doesn't
         exist, try and import it as a class from a submodule.
-
         This is a Python trick that allows the class to pretend it's a module,
         so that attribute-based usage works:
-
             from airflow import operators
             operators.BashOperator(...)
-
         It also allows normal from imports to work:
-
             from airflow.operators.bash_operator import BashOperator
         """
         if hasattr(self._parent_module, attribute):
