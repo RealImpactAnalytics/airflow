@@ -23,8 +23,11 @@ import os
 import pendulum
 import unittest
 import time
+import six
+import re
+import urllib
 
-from airflow import models, settings, AirflowException
+from airflow import configuration, models, settings, AirflowException
 from airflow.exceptions import AirflowSkipException
 from airflow.jobs import BackfillJob
 from airflow.models import DAG, TaskInstance as TI
@@ -32,12 +35,14 @@ from airflow.models import State as ST
 from airflow.models import DagModel, DagStat
 from airflow.models import clear_task_instances
 from airflow.models import XCom
+from airflow.models import Connection
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.bash_operator import BashOperator
 from airflow.operators.python_operator import PythonOperator
 from airflow.operators.python_operator import ShortCircuitOperator
 from airflow.ti_deps.deps.trigger_rule_dep import TriggerRuleDep
 from airflow.utils import timezone
+from airflow.utils.weight_rule import WeightRule
 from airflow.utils.state import State
 from airflow.utils.trigger_rule import TriggerRule
 from mock import patch
@@ -82,7 +87,6 @@ class DagTest(unittest.TestCase):
     def test_dag_as_context_manager(self):
         """
         Test DAG as a context manager.
-
         When used as a context manager, Operators are automatically added to
         the DAG (unless they specifiy a different DAG)
         """
@@ -200,6 +204,96 @@ class DagTest(unittest.TestCase):
             default_args={'owner': 'owner1'})
 
         self.assertEquals(tuple(), dag.topological_sort())
+
+    def test_dag_task_priority_weight_total(self):
+        width = 5
+        depth = 5
+        weight = 5
+        pattern = re.compile('stage(\\d*).(\\d*)')
+        # Fully connected parallel tasks. i.e. every task at each parallel
+        # stage is dependent on every task in the previous stage.
+        # Default weight should be calculated using downstream descendants
+        with DAG('dag', start_date=DEFAULT_DATE,
+                 default_args={'owner': 'owner1'}) as dag:
+            pipeline = [
+                [DummyOperator(
+                    task_id='stage{}.{}'.format(i, j), priority_weight=weight)
+                    for j in range(0, width)] for i in range(0, depth)
+            ]
+            for d, stage in enumerate(pipeline):
+                if d == 0:
+                    continue
+                for current_task in stage:
+                    for prev_task in pipeline[d - 1]:
+                        current_task.set_upstream(prev_task)
+
+            for task in six.itervalues(dag.task_dict):
+                match = pattern.match(task.task_id)
+                task_depth = int(match.group(1))
+                # the sum of each stages after this task + itself
+                correct_weight = ((depth - (task_depth + 1)) * width + 1) * weight
+
+                calculated_weight = task.priority_weight_total
+                self.assertEquals(calculated_weight, correct_weight)
+
+        # Same test as above except use 'upstream' for weight calculation
+        weight = 3
+        with DAG('dag', start_date=DEFAULT_DATE,
+                 default_args={'owner': 'owner1'}) as dag:
+            pipeline = [
+                [DummyOperator(
+                    task_id='stage{}.{}'.format(i, j), priority_weight=weight,
+                    weight_rule=WeightRule.UPSTREAM)
+                    for j in range(0, width)] for i in range(0, depth)
+            ]
+            for d, stage in enumerate(pipeline):
+                if d == 0:
+                    continue
+                for current_task in stage:
+                    for prev_task in pipeline[d - 1]:
+                        current_task.set_upstream(prev_task)
+
+            for task in six.itervalues(dag.task_dict):
+                match = pattern.match(task.task_id)
+                task_depth = int(match.group(1))
+                # the sum of each stages after this task + itself
+                correct_weight = ((task_depth) * width + 1) * weight
+
+                calculated_weight = task.priority_weight_total
+                self.assertEquals(calculated_weight, correct_weight)
+
+        # Same test as above except use 'absolute' for weight calculation
+        weight = 10
+        with DAG('dag', start_date=DEFAULT_DATE,
+                 default_args={'owner': 'owner1'}) as dag:
+            pipeline = [
+                [DummyOperator(
+                    task_id='stage{}.{}'.format(i, j), priority_weight=weight,
+                    weight_rule=WeightRule.ABSOLUTE)
+                    for j in range(0, width)] for i in range(0, depth)
+            ]
+            for d, stage in enumerate(pipeline):
+                if d == 0:
+                    continue
+                for current_task in stage:
+                    for prev_task in pipeline[d - 1]:
+                        current_task.set_upstream(prev_task)
+
+            for task in six.itervalues(dag.task_dict):
+                match = pattern.match(task.task_id)
+                task_depth = int(match.group(1))
+                # the sum of each stages after this task + itself
+                correct_weight = weight
+
+                calculated_weight = task.priority_weight_total
+                self.assertEquals(calculated_weight, correct_weight)
+
+        # Test if we enter an invalid weight rule
+        with DAG('dag', start_date=DEFAULT_DATE,
+                 default_args={'owner': 'owner1'}) as dag:
+            with self.assertRaises(AirflowException):
+                DummyOperator(task_id='should_fail', weight_rule='no rule')
+
 
     def test_get_num_task_instances(self):
         test_dag_id = 'test_get_num_task_instances_dag'
@@ -551,6 +645,68 @@ class DagRunTest(unittest.TestCase):
         dr2.update_state()
         self.assertEqual(dr.state, State.RUNNING)
         self.assertEqual(dr2.state, State.RUNNING)
+
+    def test_dagrun_success_callback(self):
+        def on_success_callable(context):
+            self.assertEqual(
+                context['dag_run'].dag_id,
+                'test_dagrun_success_callback'
+            )
+
+        dag = DAG(
+            dag_id='test_dagrun_success_callback',
+            start_date=datetime.datetime(2017, 1, 1),
+            on_success_callback=on_success_callable,
+        )
+        dag_task1 = DummyOperator(
+            task_id='test_state_succeeded1',
+            dag=dag)
+        dag_task2 = DummyOperator(
+            task_id='test_state_succeeded2',
+            dag=dag)
+        dag_task1.set_downstream(dag_task2)
+
+        initial_task_states = {
+            'test_state_succeeded1': State.SUCCESS,
+            'test_state_succeeded2': State.SUCCESS,
+        }
+
+        dag_run = self.create_dag_run(dag=dag,
+                                      state=State.RUNNING,
+                                      task_states=initial_task_states)
+        updated_dag_state = dag_run.update_state()
+        self.assertEqual(State.SUCCESS, updated_dag_state)
+
+    def test_dagrun_failure_callback(self):
+        def on_failure_callable(context):
+            self.assertEqual(
+                context['dag_run'].dag_id,
+                'test_dagrun_failure_callback'
+            )
+
+        dag = DAG(
+            dag_id='test_dagrun_failure_callback',
+            start_date=datetime.datetime(2017, 1, 1),
+            on_failure_callback=on_failure_callable,
+        )
+        dag_task1 = DummyOperator(
+            task_id='test_state_succeeded1',
+            dag=dag)
+        dag_task2 = DummyOperator(
+            task_id='test_state_failed2',
+            dag=dag)
+
+        initial_task_states = {
+            'test_state_succeeded1': State.SUCCESS,
+            'test_state_failed2': State.FAILED,
+        }
+        dag_task1.set_downstream(dag_task2)
+
+        dag_run = self.create_dag_run(dag=dag,
+                                      state=State.RUNNING,
+                                      task_states=initial_task_states)
+        updated_dag_state = dag_run.update_state()
+        self.assertEqual(State.FAILED, updated_dag_state)
 
     def test_get_task_instance_on_empty_dagrun(self):
         """
@@ -1135,6 +1291,43 @@ class TaskInstanceTest(unittest.TestCase):
         self.assertEqual(completed, expect_completed)
         self.assertEqual(ti.state, expect_state)
 
+    def test_xcom_pull(self):
+        """
+        Test xcom_pull, using different filtering methods.
+        """
+        dag = models.DAG(
+            dag_id='test_xcom', schedule_interval='@monthly',
+            start_date=timezone.datetime(2016, 6, 1, 0, 0, 0))
+
+        exec_date = timezone.utcnow()
+
+        # Push a value
+        task1 = DummyOperator(task_id='test_xcom_1', dag=dag, owner='airflow')
+        ti1 = TI(task=task1, execution_date=exec_date)
+        ti1.xcom_push(key='foo', value='bar')
+
+        # Push another value with the same key (but by a different task)
+        task2 = DummyOperator(task_id='test_xcom_2', dag=dag, owner='airflow')
+        ti2 = TI(task=task2, execution_date=exec_date)
+        ti2.xcom_push(key='foo', value='baz')
+
+        # Pull with no arguments
+        result = ti1.xcom_pull()
+        self.assertEqual(result, None)
+        # Pull the value pushed most recently by any task.
+        result = ti1.xcom_pull(key='foo')
+        self.assertIn(result, 'baz')
+        # Pull the value pushed by the first task
+        result = ti1.xcom_pull(task_ids='test_xcom_1', key='foo')
+        self.assertEqual(result, 'bar')
+        # Pull the value pushed by the second task
+        result = ti1.xcom_pull(task_ids='test_xcom_2', key='foo')
+        self.assertEqual(result, 'baz')
+        # Pull the values pushed by both tasks
+        result = ti1.xcom_pull(
+            task_ids=['test_xcom_1', 'test_xcom_2'], key='foo')
+        self.assertEqual(result, ('bar', 'baz'))
+
     def test_xcom_pull_after_success(self):
         """
         tests xcom set/clear relative to a task in a 'success' rerun scenario
@@ -1286,6 +1479,30 @@ class TaskInstanceTest(unittest.TestCase):
         self.assertEquals(1, ti1.get_num_running_task_instances(session=session))
         self.assertEquals(1, ti2.get_num_running_task_instances(session=session))
         self.assertEquals(1, ti3.get_num_running_task_instances(session=session))
+
+    def test_log_url(self):
+        now = pendulum.now('Europe/Brussels')
+        dag = DAG('dag', start_date=DEFAULT_DATE)
+        task = DummyOperator(task_id='op', dag=dag)
+        ti = TI(task=task, execution_date=now)
+        d = urllib.parse.parse_qs(
+            urllib.parse.urlparse(ti.log_url).query,
+            keep_blank_values=True, strict_parsing=True)
+        self.assertEqual(d['dag_id'][0], 'dag')
+        self.assertEqual(d['task_id'][0], 'op')
+        self.assertEqual(pendulum.parse(d['execution_date'][0]), now)
+
+    def test_mark_success_url(self):
+        now = pendulum.now('Europe/Brussels')
+        dag = DAG('dag', start_date=DEFAULT_DATE)
+        task = DummyOperator(task_id='op', dag=dag)
+        ti = TI(task=task, execution_date=now)
+        d = urllib.parse.parse_qs(
+            urllib.parse.urlparse(ti.mark_success_url).query,
+            keep_blank_values=True, strict_parsing=True)
+        self.assertEqual(d['dag_id'][0], 'dag')
+        self.assertEqual(d['task_id'][0], 'op')
+        self.assertEqual(pendulum.parse(d['execution_date'][0]), now)
 
 
 class ClearTasksTest(unittest.TestCase):
@@ -1574,3 +1791,26 @@ class ClearTasksTest(unittest.TestCase):
 
         for result in results:
             self.assertEqual(result.value, json_obj)
+
+class ConnectionTest(unittest.TestCase):
+    @patch.object(configuration, 'get')
+    def test_connection_extra_no_encryption(self, mock_get):
+        """
+        Tests extras on a new connection without encryption. The fernet key
+        is set to a non-base64-encoded string and the extra is stored without
+        encryption.
+        """
+        mock_get.return_value = 'cryptography_not_found_storing_passwords_in_plain_text'
+        test_connection = Connection(extra='testextra')
+        self.assertEqual(test_connection.extra, 'testextra')
+
+    @patch.object(configuration, 'get')
+    def test_connection_extra_with_encryption(self, mock_get):
+        """
+        Tests extras on a new connection with encryption. The fernet key
+        is set to a base64 encoded string and the extra is encrypted.
+        """
+        # 'dGVzdA==' is base64 encoded 'test'
+        mock_get.return_value = 'dGVzdA=='
+        test_connection = Connection(extra='testextra')
+        self.assertEqual(test_connection.extra, 'testextra')

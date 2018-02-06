@@ -17,9 +17,10 @@ import six
 
 from flask import Flask
 from flask_admin import Admin, base
-from flask_cache import Cache
+from flask_caching import Cache
 from flask_wtf.csrf import CSRFProtect
-csrf = CSRFProtect()
+from six.moves.urllib.parse import urlparse
+from werkzeug.wsgi import DispatcherMiddleware
 
 import airflow
 from airflow import configuration as conf
@@ -31,6 +32,8 @@ from airflow.logging_config import configure_logging
 from airflow import jobs
 from airflow import settings
 from airflow import configuration
+
+csrf = CSRFProtect()
 
 
 def create_app(config=None, testing=False):
@@ -69,9 +72,8 @@ def create_app(config=None, testing=False):
         vs = views
         av(vs.Airflow(name='DAGs', category='DAGs'))
 
-        av(vs.QueryView(name='Ad Hoc Query', category="Data Profiling"))
-
         if not conf.getboolean('core', 'secure_mode'):
+            av(vs.QueryView(name='Ad Hoc Query', category="Data Profiling"))
             av(vs.ChartModelView(
                 models.Chart, Session, name="Charts", category="Data Profiling"))
         av(vs.KnownEventView(
@@ -155,11 +157,22 @@ def create_app(config=None, testing=False):
 
         return app
 
+
 app = None
 
 
-def cached_app(config=None):
+def root_app(env, resp):
+    resp(b'404 Not Found', [(b'Content-Type', b'text/plain')])
+    return [b'Apache Airflow is not at this location']
+
+
+def cached_app(config=None, testing=False):
     global app
     if not app:
-        app = create_app(config)
+        base_url = urlparse(configuration.get('webserver', 'base_url'))[2]
+        if not base_url or base_url == '/':
+            base_url = ""
+
+        app = create_app(config, testing)
+        app = DispatcherMiddleware(root_app, {base_url: app})
     return app

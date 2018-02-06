@@ -26,15 +26,15 @@ class EmrJobFlowSensor(EmrBaseSensor):
     """
 
     NON_TERMINAL_STATES = ['STARTING', 'BOOTSTRAPPING', 'RUNNING', 'WAITING', 'TERMINATING']
-    FAILED_STATE = 'TERMINATED_WITH_ERRORS'
+    FAILED_STATE = ['TERMINATED_WITH_ERRORS']
     template_fields = ['job_flow_id']
     template_ext = ()
 
     @apply_defaults
-    def __init__(
-            self,
-            job_flow_id,
-            *args, **kwargs):
+    def __init__(self,
+                 job_flow_id,
+                 *args,
+                 **kwargs):
         super(EmrJobFlowSensor, self).__init__(*args, **kwargs)
         self.job_flow_id = job_flow_id
 
