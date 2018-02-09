@@ -58,6 +58,7 @@ from airflow.utils.db import create_session, provide_session
 from airflow.utils.email import send_email
 from airflow.utils.log.logging_mixin import LoggingMixin, set_context, StreamLogWriter
 from airflow.utils.state import State
+from airflow.utils.configuration import tmp_configuration_copy
 
 Base = models.Base
 ID_LEN = models.ID_LEN
@@ -67,7 +68,7 @@ class BaseJob(Base, LoggingMixin):
     """
     Abstract class to be derived for jobs. Jobs are processing items with state
     and duration that aren't task instances. For instance a BackfillJob is
-    a collection of task instance runs, but should have it's own state, start
+    a collection of task instance runs, but should have its own state, start
     and end time.
     """
 
@@ -1096,7 +1097,14 @@ class SchedulerJob(BaseJob):
                 # non_pooled_task_slot_count per run
                 open_slots = conf.getint('core', 'non_pooled_task_slot_count')
             else:
-                open_slots = pools[pool].open_slots(session=session)
+                if pool not in pools:
+                    self.log.warning(
+                        "Tasks using non-existent pool '%s' will not be scheduled",
+                        pool
+                    )
+                    open_slots = 0
+                else:
+                    open_slots = pools[pool].open_slots(session=session)
 
             num_queued = len(task_instances)
             self.log.info(
@@ -1795,8 +1803,8 @@ class SchedulerJob(BaseJob):
             dep_context = DepContext(deps=QUEUE_DEPS, ignore_task_deps=True)
 
             # Only schedule tasks that have their dependencies met, e.g. to avoid
-            # a task that recently got it's state changed to RUNNING from somewhere
-            # other than the scheduler from getting it's state overwritten.
+            # a task that recently got its state changed to RUNNING from somewhere
+            # other than the scheduler from getting its state overwritten.
             # TODO(aoen): It's not great that we have to check all the task instance
             # dependencies twice; once to get the task scheduled, and again to actually
             # run the task. We should try to come up with a way to only check them once.
@@ -2234,13 +2242,20 @@ class BackfillJob(BaseJob):
                                 # Skip scheduled state, we are executing immediately
                                 ti.state = State.QUEUED
                                 session.merge(ti)
+
+                                cfg_path = None
+                                if executor.__class__ in (executors.LocalExecutor,
+                                                          executors.SequentialExecutor):
+                                    cfg_path = tmp_configuration_copy()
+
                                 executor.queue_task_instance(
                                     ti,
                                     mark_success=self.mark_success,
                                     pickle_id=pickle_id,
                                     ignore_task_deps=self.ignore_task_deps,
                                     ignore_depends_on_past=ignore_depends_on_past,
-                                    pool=self.pool)
+                                    pool=self.pool,
+                                    cfg_path=cfg_path)
                                 ti_status.started[key] = ti
                                 ti_status.to_run.pop(key)
                         session.commit()

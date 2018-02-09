@@ -85,6 +85,20 @@ class TestS3Hook(unittest.TestCase):
         self.assertListEqual(['dir/b'], hook.list_keys('bucket', prefix='dir/'))
 
     @mock_s3
+    def test_list_prefixes_paged(self):
+        hook = S3Hook(aws_conn_id=None)
+        b = hook.get_bucket('bucket')
+        b.create()
+
+        keys = ["%s/b" % i for i in range(5000)]
+        dirs = ["%s/" % i for i in range(5000)]
+        for key in keys:
+            b.put_object(Key=key, Body=b'a')
+
+        self.assertListEqual(sorted(dirs),
+                             sorted(hook.list_prefixes('bucket', delimiter='/')))
+
+    @mock_s3
     def test_list_keys(self):
         hook = S3Hook(aws_conn_id=None)
         b = hook.get_bucket('bucket')
@@ -96,6 +110,19 @@ class TestS3Hook(unittest.TestCase):
         self.assertListEqual(['a', 'dir/b'], hook.list_keys('bucket'))
         self.assertListEqual(['a'], hook.list_keys('bucket', delimiter='/'))
         self.assertListEqual(['dir/b'], hook.list_keys('bucket', prefix='dir/'))
+
+    @mock_s3
+    def test_list_keys_paged(self):
+        hook = S3Hook(aws_conn_id=None)
+        b = hook.get_bucket('bucket')
+        b.create()
+
+        keys = [str(i) for i in range(5000)]
+        for key in keys:
+            b.put_object(Key=key, Body=b'a')
+
+        self.assertListEqual(sorted(keys),
+                             sorted(hook.list_keys('bucket', delimiter='/')))
 
     @mock_s3
     def test_check_for_key(self):
@@ -183,6 +210,19 @@ class TestS3Hook(unittest.TestCase):
         body = boto3.resource('s3').Object('mybucket', 'my_key').get()['Body'].read()
 
         self.assertEqual(body, b'Cont\xC3\xA9nt')
+
+    @mock_s3
+    def test_load_bytes(self):
+        hook = S3Hook(aws_conn_id=None)
+        conn = hook.get_conn()
+        # We need to create the bucket since this is all in Moto's 'virtual'
+        # AWS account
+        conn.create_bucket(Bucket="mybucket")
+
+        hook.load_bytes(b"Content", "my_key", "mybucket")
+        body = boto3.resource('s3').Object('mybucket', 'my_key').get()['Body'].read()
+
+        self.assertEqual(body, b'Content')
 
 
 if __name__ == '__main__':

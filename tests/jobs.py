@@ -333,6 +333,31 @@ class BackfillJobTest(unittest.TestCase):
         ti_dependent.refresh_from_db()
         self.assertEquals(ti_dependent.state, State.SUCCESS)
 
+    def test_run_naive_taskinstance(self):
+        """
+        Test that we can run naive (non-localized) task instances
+        """
+        NAIVE_DATE = datetime.datetime(2016, 1, 1)
+        dag_id = 'test_run_ignores_all_dependencies'
+
+        dag = self.dagbag.get_dag('test_run_ignores_all_dependencies')
+        dag.clear()
+
+        task0_id = 'test_run_dependent_task'
+        args0 = ['run',
+                 '-A',
+                 dag_id,
+                 task0_id,
+                 NAIVE_DATE.isoformat()]
+
+        cli.run(self.parser.parse_args(args0))
+        ti_dependent0 = TI(
+            task=dag.get_task(task0_id),
+            execution_date=NAIVE_DATE)
+
+        ti_dependent0.refresh_from_db()
+        self.assertEquals(ti_dependent0.state, State.FAILED)
+
     def test_cli_backfill_depends_on_past(self):
         """
         Test that CLI respects -I argument
@@ -1144,6 +1169,30 @@ class SchedulerJobTest(unittest.TestCase):
         self.assertIn(tis[0].key, res_keys)
         self.assertIn(tis[1].key, res_keys)
         self.assertIn(tis[3].key, res_keys)
+
+    def test_nonexistent_pool(self):
+        dag_id = 'SchedulerJobTest.test_nonexistent_pool'
+        task_id = 'dummy_wrong_pool'
+        dag = DAG(dag_id=dag_id, start_date=DEFAULT_DATE, concurrency=16)
+        task = DummyOperator(dag=dag, task_id=task_id, pool="this_pool_doesnt_exist")
+        dagbag = self._make_simple_dag_bag([dag])
+
+        scheduler = SchedulerJob(**self.default_scheduler_args)
+        session = settings.Session()
+
+        dr = scheduler.create_dag_run(dag)
+
+        ti = TI(task, dr.execution_date)
+        ti.state = State.SCHEDULED
+        session.merge(ti)
+        session.commit()
+
+        res = scheduler._find_executable_task_instances(
+            dagbag,
+            states=[State.SCHEDULED],
+            session=session)
+        session.commit()
+        self.assertEqual(0, len(res))
 
     def test_find_executable_task_instances_none(self):
         dag_id = 'SchedulerJobTest.test_find_executable_task_instances_none'
@@ -2523,7 +2572,7 @@ class SchedulerJobTest(unittest.TestCase):
 
     def test_dag_get_active_runs(self):
         """
-        Test to check that a DAG returns it's active runs
+        Test to check that a DAG returns its active runs
         """
 
         now = timezone.utcnow()

@@ -797,8 +797,23 @@ class TaskInstance(Base, LoggingMixin):
     def __init__(self, task, execution_date, state=None):
         self.dag_id = task.dag_id
         self.task_id = task.task_id
-        self.execution_date = execution_date
         self.task = task
+        self._log = logging.getLogger("airflow.task")
+
+        # make sure we have a localized execution_date stored in UTC
+        if execution_date and not timezone.is_localized(execution_date):
+            self.log.warning("execution date %s has no timezone information. Using "
+                             "default from dag or system", execution_date)
+            if self.task.has_dag():
+                execution_date = timezone.make_aware(execution_date,
+                                                     self.task.dag.timezone)
+            else:
+                execution_date = timezone.make_aware(execution_date)
+
+            execution_date = timezone.convert_to_utc(execution_date)
+
+        self.execution_date = execution_date
+
         self.queue = task.queue
         self.pool = task.pool
         self.priority_weight = task.priority_weight_total
@@ -810,7 +825,6 @@ class TaskInstance(Base, LoggingMixin):
             self.state = state
         self.hostname = ''
         self.init_on_load()
-        self._log = logging.getLogger("airflow.task")
         # Is this TaskInstance being currently running within `airflow run --raw`.
         # Not persisted to the database so only valid for the current process
         self.is_raw = False
@@ -967,6 +981,8 @@ class TaskInstance(Base, LoggingMixin):
         :param job_id: job ID (needs more details)
         :param pool: the Airflow pool that the task should run in
         :type pool: unicode
+        :param cfg_path: the Path to the configuration file
+        :type cfg_path: basestring
         :return: shell command that can be used to run the task instance
         """
         iso = execution_date.isoformat()
