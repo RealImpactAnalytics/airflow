@@ -320,6 +320,9 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         """
         Processes the log files and extracts useful information out of it.
 
+        If the deploy-mode is 'client', log the output of the submit command as those
+        are the output logs of the Spark worker directly.
+
         Remark: If the driver needs to be tracked for its status, the log-level of the
         spark deploy needs to be at least INFO (log4j.logger.org.apache.spark.deploy=INFO)
 
@@ -344,6 +347,9 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
                     self._driver_id = match_driver_id.groups()[0]
                     self.log.info("identified spark driver id: {}"
                                   .format(self._driver_id))
+
+            if self._connection['deploy_mode'] == 'client':
+                self.log.info(line)
 
             self.log.debug("spark submit log: {}".format(line))
 
