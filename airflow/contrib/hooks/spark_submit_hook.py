@@ -132,7 +132,8 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
         subsequent spark-submit status requests after the initial spark-submit request
         :return: if the driver status should be tracked
         """
-        return 'spark://' in self._connection['master']
+        return ('spark://' in self._connection['master'] and
+                self._connection['deploy_mode'] == 'cluster')
 
     def _resolve_connection(self):
         # Build from connection master or default to yarn if not available
