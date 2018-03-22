@@ -389,6 +389,10 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
             ERROR: Unable to run or restart due to an unrecoverable error
             (e.g. missing jar file)
         """
+
+        retries = 0
+        max_retries = 10
+
         # Keep polling as long as the driver is processing
         while self._driver_status not in ["FINISHED", "UNKNOWN",
                                           "KILLED", "FAILED", "ERROR"]:
@@ -410,10 +414,13 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
             returncode = status_process.wait()
 
             if returncode:
-                raise AirflowException(
-                    "Failed to poll for the driver status: returncode = {}"
-                    .format(returncode)
-                )
+                if retries < max_retries:
+                    retries = retries + 1
+                else:
+                    raise AirflowException(
+                        "Failed to poll for the driver status {} times: returncode = {}"
+                        .format(max_retries, returncode)
+                    )
 
     def on_kill(self):
 
