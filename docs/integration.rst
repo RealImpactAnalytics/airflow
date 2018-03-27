@@ -113,6 +113,39 @@ WasbHook
 
 .. autoclass:: airflow.contrib.hooks.wasb_hook.WasbHook
 
+Logging
+'''''''
+
+Airflow can be configured to read and write task logs in Azure Blob Storage.
+Follow the steps below to enable Azure Blob Storage logging.
+
+#. Airflow's logging system requires a custom .py file to be located in the ``PYTHONPATH``, so that it's importable from Airflow. Start by creating a directory to store the config file. ``$AIRFLOW_HOME/config`` is recommended.
+#. Create empty files called ``$AIRFLOW_HOME/config/log_config.py`` and ``$AIRFLOW_HOME/config/__init__.py``.
+#. Copy the contents of ``airflow/config_templates/airflow_local_settings.py`` into the ``log_config.py`` file that was just created in the step above.
+#. Customize the following portions of the template:
+
+    .. code-block:: bash
+
+        # wasb buckets should start with "wasb" just to help Airflow select correct handler
+        REMOTE_BASE_LOG_FOLDER = 'wasb-<whatever you want here>'
+
+        # Rename DEFAULT_LOGGING_CONFIG to LOGGING CONFIG
+        LOGGING_CONFIG = ...
+
+        
+
+#. Make sure a Azure Blob Storage (Wasb) connection hook has been defined in Airflow. The hook should have read and write access to the Azure Blob Storage bucket defined above in ``REMOTE_BASE_LOG_FOLDER``.
+
+#. Update ``$AIRFLOW_HOME/airflow.cfg`` to contain:
+
+    .. code-block:: bash
+
+        remote_logging = True
+        logging_config_class = log_config.LOGGING_CONFIG
+        remote_log_conn_id = <name of the Azure Blob Storage connection>
+
+#. Restart the Airflow webserver and scheduler, and trigger (or wait for) a new task execution.
+#. Verify that logs are showing up for newly executed tasks in the bucket you've defined.
 
 
 .. _AWS:
@@ -349,6 +382,7 @@ BigQuery Operators
 - :ref:`BigQueryValueCheckOperator` : Performs a simple value check using SQL code.
 - :ref:`BigQueryIntervalCheckOperator` : Checks that the values of metrics given as SQL expressions are within a certain tolerance of the ones from days_back before.
 - :ref:`BigQueryCreateEmptyTableOperator` : Creates a new, empty table in the specified BigQuery dataset optionally with schema.
+- :ref:`BigQueryCreateExternalTableOperator` : Creates a new, external table in the dataset with the data in Google Cloud Storage.
 - :ref:`BigQueryOperator` : Executes BigQuery SQL queries in a specific BigQuery database.
 - :ref:`BigQueryToBigQueryOperator` : Copy a BigQuery table to another BigQuery table.
 - :ref:`BigQueryToCloudStorageOperator` : Transfers a BigQuery table to a Google Cloud Storage bucket
@@ -388,6 +422,13 @@ BigQueryCreateEmptyTableOperator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: airflow.contrib.operators.bigquery_operator.BigQueryCreateEmptyTableOperator
+
+.. _BigQueryCreateExternalTableOperator:
+
+BigQueryCreateExternalTableOperator
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: airflow.contrib.operators.bigquery_operator.BigQueryCreateExternalTableOperator
 
 .. _BigQueryOperator:
 
@@ -679,6 +720,7 @@ Storage Operators
 
 - :ref:`FileToGoogleCloudStorageOperator` : Uploads a file to Google Cloud Storage.
 - :ref:`GoogleCloudStorageCopyOperator` : Copies objects (optionally from a directory) filtered by 'delimiter' (file extension for e.g .json) from a bucket to another bucket in a different directory, if required.
+- :ref:`GoogleCloudStorageCreateBucketOperator` : Creates a new cloud storage bucket.
 - :ref:`GoogleCloudStorageListOperator` : List all objects from the bucket with the give string prefix and delimiter in name.
 - :ref:`GoogleCloudStorageDownloadOperator` : Downloads a file from Google Cloud Storage.
 - :ref:`GoogleCloudStorageToBigQueryOperator` : Loads files from Google cloud storage into BigQuery.
@@ -697,6 +739,13 @@ GoogleCloudStorageCopyOperator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: airflow.contrib.operators.gcs_copy_operator.GoogleCloudStorageCopyOperator
+
+.. _GoogleCloudStorageCreateBucketOperator:
+
+GoogleCloudStorageCreateBucketOperator
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: airflow.contrib.operators.gcs_operator.GoogleCloudStorageCreateBucketOperator
 
 .. _GoogleCloudStorageDownloadOperator:
 
