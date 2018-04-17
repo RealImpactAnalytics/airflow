@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 #
 
 import copy
@@ -44,9 +49,11 @@ class SendEmailSendGridTest(unittest.TestCase):
             'from': {'email': u'foo@bar.com'},
             'subject': 'sendgrid-send-email unit test'}
         self.personalization_custom_args = {'arg1': 'val1', 'arg2': 'val2'}
-        self.expected_mail_data_custom_args = copy.deepcopy(self.expected_mail_data)
-        self.expected_mail_data_custom_args['personalizations'][0]['custom_args'] = \
+        self.categories = ['cat1', 'cat2']
+        self.expected_mail_data_extras = copy.deepcopy(self.expected_mail_data)
+        self.expected_mail_data_extras['personalizations'][0]['custom_args'] = \
             self.personalization_custom_args
+        self.expected_mail_data_extras['categories'] = self.categories
 
         # Test the right email is constructed.
 
@@ -60,8 +67,9 @@ class SendEmailSendGridTest(unittest.TestCase):
     # Test the right email is constructed.
     @mock.patch('os.environ.get')
     @mock.patch('airflow.contrib.utils.sendgrid._post_sendgrid_mail')
-    def test_send_email_sendgrid_correct_email_custom_args(self, mock_post, mock_get):
+    def test_send_email_sendgrid_correct_email_extras(self, mock_post, mock_get):
         mock_get.return_value = 'foo@bar.com'
         send_email(self.to, self.subject, self.html_content, cc=self.cc, bcc=self.bcc,
-                   personalization_custom_args=self.personalization_custom_args)
-        mock_post.assert_called_with(self.expected_mail_data_custom_args)
+                   personalization_custom_args=self.personalization_custom_args,
+                   categories=self.categories)
+        mock_post.assert_called_with(self.expected_mail_data_extras)

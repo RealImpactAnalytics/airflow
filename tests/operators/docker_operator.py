@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
 import unittest
 import logging
@@ -53,7 +58,7 @@ class DockerOperatorTestCase(unittest.TestCase):
         operator = DockerOperator(api_version='1.19', command='env', environment={'UNIT': 'TEST'},
                                   image='ubuntu:latest', network_mode='bridge', owner='unittest',
                                   task_id='unittest', volumes=['/host/path:/container/path'],
-                                  working_dir='/container/path')
+                                  working_dir='/container/path', shm_size=1000)
         operator.execute(None)
 
         client_class_mock.assert_called_with(base_url='unix://var/run/docker.sock', tls=None,
@@ -71,7 +76,8 @@ class DockerOperatorTestCase(unittest.TestCase):
                                                         )
         client_mock.create_host_config.assert_called_with(binds=['/host/path:/container/path',
                                                                  '/mkdtemp:/tmp/airflow'],
-                                                          network_mode='bridge')
+                                                          network_mode='bridge',
+                                                          shm_size=1000)
         client_mock.images.assert_called_with(name='ubuntu:latest')
         client_mock.logs.assert_called_with(container='some_id', stream=True)
         client_mock.pull.assert_called_with('ubuntu:latest', stream=True)

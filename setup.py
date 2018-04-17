@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
 from setuptools import setup, find_packages, Command
 from setuptools.command.test import test as TestCommand
@@ -119,6 +124,10 @@ doc = [
 ]
 docker = ['docker-py>=1.6.0']
 druid = ['pydruid>=0.4.1']
+elasticsearch = [
+    'elasticsearch>=5.0.0,<6.0.0',
+    'elasticsearch-dsl>=5.0.0,<6.0.0'
+]
 emr = ['boto3>=1.0.0']
 gcp_api = [
     'httplib2',
@@ -146,7 +155,7 @@ oracle = ['cx_Oracle>=5.1.2']
 postgres = ['psycopg2-binary>=2.7.4']
 ssh = ['paramiko>=2.1.1', 'pysftp>=0.2.9']
 salesforce = ['simple-salesforce>=0.72']
-s3 = ['boto3>=1.0.0']
+s3 = ['boto3>=1.7.0']
 samba = ['pysmbclient>=0.1.3']
 slack = ['slackclient>=1.0.0']
 statsd = ['statsd>=3.0.1, <4.0']
@@ -166,7 +175,8 @@ cloudant = ['cloudant>=0.5.9,<2.0'] # major update coming soon, clamp to 0.x
 redis = ['redis>=2.10.5']
 kubernetes = ['kubernetes>=3.0.0',
               'cryptography>=2.0.0']
-
+snowflake = ['snowflake-connector-python>=1.5.2',
+             'snowflake-sqlalchemy>=1.1.0']
 zendesk = ['zdesk']
 
 all_dbs = postgres + mysql + hive + mssql + hdfs + vertica + cloudant + druid
@@ -191,7 +201,8 @@ devel_minreq = devel + kubernetes + mysql + doc + password + s3 + cgroups
 devel_hadoop = devel_minreq + hive + hdfs + webhdfs + kerberos
 devel_all = (sendgrid + devel + all_dbs + doc + samba + s3 + slack + crypto + oracle +
              docker + ssh + kubernetes + celery + azure + redis + gcp_api + datadog +
-             zendesk + jdbc + ldap + kerberos + password + webhdfs + jenkins + druid)
+             zendesk + jdbc + ldap + kerberos + password + webhdfs + jenkins +
+             druid + snowflake + elasticsearch)
 
 # Snakebite & Google Cloud Dataflow are not Python 3 compatible :'(
 if PY3:
@@ -240,7 +251,7 @@ def do_setup():
             'pygments>=2.0.1, <3.0',
             'python-daemon>=2.1.1, <2.2',
             'python-dateutil>=2.3, <3',
-            'python-nvd3==0.14.2',
+            'python-nvd3==0.15.0',
             'requests>=2.5.1, <3',
             'setproctitle>=1.1.8, <2',
             'sqlalchemy>=1.1.15, <1.2.0',
@@ -272,6 +283,7 @@ def do_setup():
             'doc': doc,
             'docker': docker,
             'druid': druid,
+            'elasticsearch': elasticsearch,
             'emr': emr,
             'gcp_api': gcp_api,
             'github_enterprise': github_enterprise,
@@ -298,7 +310,8 @@ def do_setup():
             'webhdfs': webhdfs,
             'jira': jira,
             'redis': redis,
-            'kubernetes': kubernetes
+            'kubernetes': kubernetes,
+            'snowflake': snowflake
         },
         classifiers=[
             'Development Status :: 5 - Production/Stable',

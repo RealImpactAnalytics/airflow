@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 #
 
 from __future__ import print_function, unicode_literals
@@ -99,7 +104,7 @@ class HiveCliHook(BaseHook):
         if self.use_beeline:
             hive_bin = 'beeline'
             jdbc_url = "jdbc:hive2://{conn.host}:{conn.port}/{conn.schema}"
-            if configuration.get('core', 'security') == 'kerberos':
+            if configuration.conf.get('core', 'security') == 'kerberos':
                 template = conn.extra_dejson.get(
                     'principal', "hive/_HOST@EXAMPLE.COM")
                 if "_HOST" in template:
@@ -458,12 +463,13 @@ class HiveMetastoreHook(BaseHook):
         from hive_service import ThriftHive
         ms = self.metastore_conn
         auth_mechanism = ms.extra_dejson.get('authMechanism', 'NOSASL')
-        if configuration.get('core', 'security') == 'kerberos':
+        if configuration.conf.get('core', 'security') == 'kerberos':
             auth_mechanism = ms.extra_dejson.get('authMechanism', 'GSSAPI')
             kerberos_service_name = ms.extra_dejson.get('kerberos_service_name', 'hive')
 
         socket = TSocket.TSocket(ms.host, ms.port)
-        if configuration.get('core', 'security') == 'kerberos' and auth_mechanism == 'GSSAPI':
+        if configuration.conf.get('core', 'security') == 'kerberos' \
+                and auth_mechanism == 'GSSAPI':
             try:
                 import saslwrapper as sasl
             except ImportError:
@@ -735,7 +741,7 @@ class HiveServer2Hook(BaseHook):
         db = self.get_connection(self.hiveserver2_conn_id)
         auth_mechanism = db.extra_dejson.get('authMechanism', 'PLAIN')
         kerberos_service_name = None
-        if configuration.get('core', 'security') == 'kerberos':
+        if configuration.conf.get('core', 'security') == 'kerberos':
             auth_mechanism = db.extra_dejson.get('authMechanism', 'GSSAPI')
             kerberos_service_name = db.extra_dejson.get('kerberos_service_name', 'hive')
 

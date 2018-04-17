@@ -1,17 +1,22 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
 from __future__ import print_function
 import logging
@@ -54,6 +59,7 @@ from airflow.models import (DagModel, DagBag, TaskInstance,
                             Connection, DAG)
 
 from airflow.ti_deps.dep_context import (DepContext, SCHEDULER_DEPS)
+from airflow.utils import cli as cli_utils
 from airflow.utils import db as db_utils
 from airflow.utils.net import get_hostname
 from airflow.utils.log.logging_mixin import (LoggingMixin, redirect_stderr,
@@ -149,6 +155,7 @@ def get_dags(args):
     return matched_dags
 
 
+@cli_utils.action_logging
 def backfill(args, dag=None):
     logging.basicConfig(
         level=settings.LOGGING_LEVEL,
@@ -190,6 +197,7 @@ def backfill(args, dag=None):
             delay_on_limit_secs=args.delay_on_limit)
 
 
+@cli_utils.action_logging
 def trigger_dag(args):
     """
     Creates a dag run for the specified dag
@@ -208,6 +216,7 @@ def trigger_dag(args):
     log.info(message)
 
 
+@cli_utils.action_logging
 def delete_dag(args):
     """
     Deletes all DB records related to the specified dag
@@ -228,6 +237,7 @@ def delete_dag(args):
         print("Bail.")
 
 
+@cli_utils.action_logging
 def pool(args):
     log = LoggingMixin().log
 
@@ -252,6 +262,7 @@ def pool(args):
         log.info(_tabulate(pools=pools))
 
 
+@cli_utils.action_logging
 def variables(args):
     if args.get:
         try:
@@ -328,10 +339,12 @@ def export_helper(filepath):
     print("{} variables successfully exported to {}".format(len(var_dict), filepath))
 
 
+@cli_utils.action_logging
 def pause(args, dag=None):
     set_is_paused(True, args, dag)
 
 
+@cli_utils.action_logging
 def unpause(args, dag=None):
     set_is_paused(False, args, dag)
 
@@ -401,6 +414,7 @@ def _run(args, dag, ti):
         executor.end()
 
 
+@cli_utils.action_logging
 def run(args, dag=None):
     # Disable connection pooling to reduce the # of connections on the DB
     # while it's waiting for the task to finish.
@@ -448,11 +462,11 @@ def run(args, dag=None):
     if args.interactive:
         _run(args, dag, ti)
     else:
-        with redirect_stdout(ti.log, logging.INFO),\
-                redirect_stderr(ti.log, logging.WARN):
+        with redirect_stdout(ti.log, logging.INFO), redirect_stderr(ti.log, logging.WARN):
             _run(args, dag, ti)
-        logging.shutdown()
 
+
+@cli_utils.action_logging
 def task_failed_deps(args):
     """
     Returns the unmet dependencies for a task instance from the perspective of the
@@ -479,6 +493,7 @@ def task_failed_deps(args):
         print("Task instance dependencies are all met.")
 
 
+@cli_utils.action_logging
 def task_state(args):
     """
     Returns the state of a TaskInstance at the command line.
@@ -492,6 +507,7 @@ def task_state(args):
     print(ti.current_state())
 
 
+@cli_utils.action_logging
 def dag_state(args):
     """
     Returns the state of a DagRun at the command line.
@@ -504,6 +520,7 @@ def dag_state(args):
     print(dr[0].state if len(dr) > 0 else None)
 
 
+@cli_utils.action_logging
 def list_dags(args):
     dagbag = DagBag(process_subdir(args.subdir))
     s = textwrap.dedent("""\n
@@ -518,6 +535,7 @@ def list_dags(args):
         print(dagbag.dagbag_report())
 
 
+@cli_utils.action_logging
 def list_tasks(args, dag=None):
     dag = dag or get_dag(args)
     if args.tree:
@@ -527,6 +545,7 @@ def list_tasks(args, dag=None):
         print("\n".join(sorted(tasks)))
 
 
+@cli_utils.action_logging
 def test(args, dag=None):
     dag = dag or get_dag(args)
 
@@ -543,6 +562,7 @@ def test(args, dag=None):
         ti.run(ignore_task_deps=True, ignore_ti_state=True, test_mode=True)
 
 
+@cli_utils.action_logging
 def render(args):
     dag = get_dag(args)
     task = dag.get_task(task_id=args.task_id)
@@ -557,6 +577,7 @@ def render(args):
         """.format(attr, getattr(task, attr))))
 
 
+@cli_utils.action_logging
 def clear(args):
     logging.basicConfig(
         level=settings.LOGGING_LEVEL,
@@ -713,6 +734,7 @@ def restart_workers(gunicorn_master_proc, num_workers_expected, master_timeout):
             sys.exit(1)
 
 
+@cli_utils.action_logging
 def webserver(args):
     print(settings.HEADER)
 
@@ -838,6 +860,7 @@ def webserver(args):
             monitor_gunicorn(gunicorn_master_proc)
 
 
+@cli_utils.action_logging
 def scheduler(args):
     print(settings.HEADER)
     job = jobs.SchedulerJob(
@@ -871,6 +894,7 @@ def scheduler(args):
         job.run()
 
 
+@cli_utils.action_logging
 def serve_logs(args):
     print("Starting flask")
     import flask
@@ -891,6 +915,7 @@ def serve_logs(args):
         host='0.0.0.0', port=WORKER_LOG_SERVER_PORT)
 
 
+@cli_utils.action_logging
 def worker(args):
     env = os.environ.copy()
     env['AIRFLOW_HOME'] = settings.AIRFLOW_HOME
@@ -937,12 +962,14 @@ def worker(args):
         sp.kill()
 
 
+@cli_utils.action_logging
 def initdb(args):  # noqa
     print("DB: " + repr(settings.engine.url))
     db_utils.initdb(settings.RBAC)
     print("Done.")
 
 
+@cli_utils.action_logging
 def resetdb(args):
     print("DB: " + repr(settings.engine.url))
     if args.yes or input(
@@ -953,6 +980,7 @@ def resetdb(args):
         print("Bail.")
 
 
+@cli_utils.action_logging
 def upgradedb(args):  # noqa
     print("DB: " + repr(settings.engine.url))
     db_utils.upgradedb()
@@ -970,6 +998,7 @@ def upgradedb(args):  # noqa
         session.commit()
 
 
+@cli_utils.action_logging
 def version(args):  # noqa
     print(settings.HEADER + "  v" + airflow.__version__)
 
@@ -978,6 +1007,7 @@ alternative_conn_specs = ['conn_type', 'conn_host',
                           'conn_login', 'conn_password', 'conn_schema', 'conn_port']
 
 
+@cli_utils.action_logging
 def connections(args):
     if args.list:
         # Check that no other flags were passed to the command
@@ -1098,6 +1128,7 @@ def connections(args):
         return
 
 
+@cli_utils.action_logging
 def flower(args):
     broka = conf.get('celery', 'BROKER_URL')
     address = '--address={}'.format(args.hostname)
@@ -1139,6 +1170,7 @@ def flower(args):
                              broka, address, port, api, flower_conf, url_prefix])
 
 
+@cli_utils.action_logging
 def kerberos(args):  # noqa
     print(settings.HEADER)
     import airflow.security.kerberos
@@ -1167,6 +1199,7 @@ def kerberos(args):  # noqa
         airflow.security.kerberos.run()
 
 
+@cli_utils.action_logging
 def create_user(args):
     fields = {
         'role': args.role,
@@ -1568,23 +1601,24 @@ class CLIFactory(object):
         # create_user
         'role': Arg(
             ('-r', '--role',),
-            help='Role of the user',
+            help='Role of the user. Existing roles include Admin, '
+                 'User, Op, Viewer, and Public',
             type=str),
         'firstname': Arg(
             ('-f', '--firstname',),
-            help='First name of the admin user',
+            help='First name of the user',
             type=str),
         'lastname': Arg(
             ('-l', '--lastname',),
-            help='Last name of the admin user',
+            help='Last name of the user',
             type=str),
         'email': Arg(
             ('-e', '--email',),
-            help='Email of the admin user',
+            help='Email of the user',
             type=str),
         'username': Arg(
             ('-u', '--username',),
-            help='Username of the admin user',
+            help='Username of the user',
             type=str),
     }
     subparsers = (
