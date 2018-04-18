@@ -43,7 +43,7 @@ class TriggerDagRunOperator(BaseOperator):
         should look like ``def foo(context, dag_run_obj):``
     :type python_callable: python callable
     """
-    template_fields = tuple('execution_date')
+    template_fields = ('start_date', 'execution_date')
     template_ext = tuple()
     ui_color = '#ffefeb'
 
