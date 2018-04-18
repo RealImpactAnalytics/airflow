@@ -52,10 +52,12 @@ class TriggerDagRunOperator(BaseOperator):
             self,
             trigger_dag_id,
             python_callable,
+            execution_date,
             *args, **kwargs):
         super(TriggerDagRunOperator, self).__init__(*args, **kwargs)
         self.python_callable = python_callable
         self.trigger_dag_id = trigger_dag_id
+        self.execution_date = execution_date
 
     def execute(self, context):
         dro = DagRunOrder(run_id='trig__' + datetime.utcnow().isoformat())
@@ -69,7 +71,7 @@ class TriggerDagRunOperator(BaseOperator):
                 state=State.RUNNING,
                 conf=dro.payload,
                 external_trigger=True,
-                start_date=self.start_date)
+                execution_date=self.execution_date)
             self.log.info("Creating DagRun %s", dr)
             session.add(dr)
             session.commit()
