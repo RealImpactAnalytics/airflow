@@ -274,7 +274,7 @@ function updateQueryStringParameter(uri, key, value) {
     var task_id = '';
     var exection_date = '';
     var subdag_id = '';
-    var subdag_default_view = '';
+    var subdag_default_view = '{{ dag.default_view }}';;
     function call_modal(t, d, sd) {
       task_id = t;
       loc = String(window.location);
@@ -292,7 +292,6 @@ function updateQueryStringParameter(uri, key, value) {
         else {
             $("#div_btn_subdag").show();
             subdag_id = "{{ dag.dag_id }}."+t;
-            subdag_default_view = "{{ dag.default_view }}";
         }
     }
 
@@ -313,7 +312,7 @@ function updateQueryStringParameter(uri, key, value) {
     });
 
     $("#btn_subdag").click(function(){
-      url = "{{ url_for( 'airflow.' + subdag_default_view ) }}" +
+      url = "{{ url_for( 'airflow.' + dag.default_view ) }}" +
         "?dag_id=" + subdag_id +
         "&execution_date=" + execution_date;
       window.location = url;
