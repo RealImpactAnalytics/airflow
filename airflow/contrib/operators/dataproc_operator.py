@@ -7,9 +7,9 @@
 # to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
 # with the License.  You may obtain a copy of the License at
-# 
+#
 #   http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing,
 # software distributed under the License is distributed on an
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -20,8 +20,10 @@
 
 import ntpath
 import os
+import re
 import time
 import uuid
+from datetime import timedelta
 
 from airflow.contrib.hooks.gcp_dataproc_hook import DataProcHook
 from airflow.contrib.hooks.gcs_hook import GoogleCloudStorageHook
@@ -30,6 +32,7 @@ from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.version import version
 from googleapiclient.errors import HttpError
+from airflow.utils import timezone
 
 
 class DataprocClusterCreateOperator(BaseOperator):
@@ -57,6 +60,9 @@ class DataprocClusterCreateOperator(BaseOperator):
     :param init_actions_uris: List of GCS uri's containing
         dataproc initialization scripts
     :type init_actions_uris: list[string]
+    :param init_action_timeout: Amount of time executable scripts in
+        init_actions_uris has to complete
+    :type init_action_timeout: string
     :param metadata: dict of key-value google compute engine metadata entries
         to add to all instances
     :type metadata: dict
@@ -100,6 +106,16 @@ class DataprocClusterCreateOperator(BaseOperator):
     :type service_account: string
     :param service_account_scopes: The URIs of service account scopes to be included.
     :type service_account_scopes: list[string]
+    :param idle_delete_ttl: The longest duration that cluster would keep alive while
+        staying idle. Passing this threshold will cause cluster to be auto-deleted.
+        A duration in seconds.
+    :type idle_delete_ttl: int
+    :param auto_delete_time:  The time when cluster will be auto-deleted.
+    :type auto_delete_time: datetime
+    :param auto_delete_ttl: The life duration of cluster, the cluster will be
+        auto-deleted at the end of this duration.
+        A duration in seconds. (If auto_delete_time is set this parameter will be ignored)
+    :type auto_delete_ttl: int
     """
 
     template_fields = ['cluster_name', 'project_id', 'zone', 'region']
@@ -115,6 +131,7 @@ class DataprocClusterCreateOperator(BaseOperator):
                  tags=None,
                  storage_bucket=None,
                  init_actions_uris=None,
+                 init_action_timeout="10m",
                  metadata=None,
                  image_version=None,
                  properties=None,
@@ -129,6 +146,9 @@ class DataprocClusterCreateOperator(BaseOperator):
                  delegate_to=None,
                  service_account=None,
                  service_account_scopes=None,
+                 idle_delete_ttl=None,
+                 auto_delete_time=None,
+                 auto_delete_ttl=None,
                  *args,
                  **kwargs):
 
@@ -141,6 +161,7 @@ class DataprocClusterCreateOperator(BaseOperator):
         self.num_preemptible_workers = num_preemptible_workers
         self.storage_bucket = storage_bucket
         self.init_actions_uris = init_actions_uris
+        self.init_action_timeout = init_action_timeout
         self.metadata = metadata
         self.image_version = image_version
         self.properties = properties
@@ -156,6 +177,9 @@ class DataprocClusterCreateOperator(BaseOperator):
         self.region = region
         self.service_account = service_account
         self.service_account_scopes = service_account_scopes
+        self.idle_delete_ttl = idle_delete_ttl
+        self.auto_delete_time = auto_delete_time
+        self.auto_delete_ttl = auto_delete_ttl
 
     def _get_cluster_list_for_project(self, service):
         result = service.projects().regions().clusters().list(
@@ -206,6 +230,19 @@ class DataprocClusterCreateOperator(BaseOperator):
                     return
                 time.sleep(15)
 
+    def _get_init_action_timeout(self):
+        match = re.match(r"^(\d+)(s|m)$", self.init_action_timeout)
+        if match:
+            if match.group(2) == "s":
+                return self.init_action_timeout
+            elif match.group(2) == "m":
+                val = float(match.group(1))
+                return "{}s".format(timedelta(minutes=val).seconds)
+
+        raise AirflowException(
+            "DataprocClusterCreateOperator init_action_timeout"
+            " should be expressed in minutes or seconds. i.e. 10m, 30s")
+
     def _build_cluster_data(self):
         zone_uri = \
             'https://www.googleapis.com/compute/v1/projects/{}/zones/{}'.format(
@@ -241,7 +278,8 @@ class DataprocClusterCreateOperator(BaseOperator):
                     }
                 },
                 'secondaryWorkerConfig': {},
-                'softwareConfig': {}
+                'softwareConfig': {},
+                'lifecycleConfig': {}
             }
         }
         if self.num_preemptible_workers > 0:
@@ -274,9 +312,22 @@ class DataprocClusterCreateOperator(BaseOperator):
             cluster_data['config']['softwareConfig']['imageVersion'] = self.image_version
         if self.properties:
             cluster_data['config']['softwareConfig']['properties'] = self.properties
+        if self.idle_delete_ttl:
+            cluster_data['config']['lifecycleConfig']['idleDeleteTtl'] = \
+                "{}s".format(self.idle_delete_ttl)
+        if self.auto_delete_time:
+            utc_auto_delete_time = timezone.convert_to_utc(self.auto_delete_time)
+            cluster_data['config']['lifecycleConfig']['autoDeleteTime'] = \
+                utc_auto_delete_time.format('%Y-%m-%dT%H:%M:%S.%fZ', formatter='classic')
+        elif self.auto_delete_ttl:
+            cluster_data['config']['lifecycleConfig']['autoDeleteTtl'] = \
+                "{}s".format(self.auto_delete_ttl)
         if self.init_actions_uris:
             init_actions_dict = [
-                {'executableFile': uri} for uri in self.init_actions_uris
+                {
+                    'executableFile': uri,
+                    'executionTimeout': self._get_init_action_timeout()
+                } for uri in self.init_actions_uris
             ]
             cluster_data['config']['initializationActions'] = init_actions_dict
         if self.service_account:
@@ -458,7 +509,7 @@ class DataProcPigOperator(BaseOperator):
     :param region: The specified region where the dataproc cluster is created.
     :type region: string
     """
-    template_fields = ['query', 'variables', 'job_name', 'cluster_name']
+    template_fields = ['query', 'variables', 'job_name', 'cluster_name', 'dataproc_jars']
     template_ext = ('.pg', '.pig',)
     ui_color = '#0273d4'
 
@@ -538,7 +589,7 @@ class DataProcHiveOperator(BaseOperator):
     :param region: The specified region where the dataproc cluster is created.
     :type region: string
     """
-    template_fields = ['query', 'variables', 'job_name', 'cluster_name']
+    template_fields = ['query', 'variables', 'job_name', 'cluster_name', 'dataproc_jars']
     template_ext = ('.q',)
     ui_color = '#0273d4'
 
@@ -619,7 +670,7 @@ class DataProcSparkSqlOperator(BaseOperator):
     :param region: The specified region where the dataproc cluster is created.
     :type region: string
     """
-    template_fields = ['query', 'variables', 'job_name', 'cluster_name']
+    template_fields = ['query', 'variables', 'job_name', 'cluster_name', 'dataproc_jars']
     template_ext = ('.q',)
     ui_color = '#0273d4'
 
@@ -708,7 +759,7 @@ class DataProcSparkOperator(BaseOperator):
     :type region: string
     """
 
-    template_fields = ['arguments', 'job_name', 'cluster_name']
+    template_fields = ['arguments', 'job_name', 'cluster_name', 'dataproc_jars']
     ui_color = '#0273d4'
 
     @apply_defaults
@@ -798,7 +849,7 @@ class DataProcHadoopOperator(BaseOperator):
     :type region: string
     """
 
-    template_fields = ['arguments', 'job_name', 'cluster_name']
+    template_fields = ['arguments', 'job_name', 'cluster_name', 'dataproc_jars']
     ui_color = '#0273d4'
 
     @apply_defaults
@@ -888,7 +939,7 @@ class DataProcPySparkOperator(BaseOperator):
     :type region: string
     """
 
-    template_fields = ['arguments', 'job_name', 'cluster_name']
+    template_fields = ['arguments', 'job_name', 'cluster_name', 'dataproc_jars']
     ui_color = '#0273d4'
 
     @staticmethod

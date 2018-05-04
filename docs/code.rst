@@ -145,7 +145,6 @@ Operators
 .. autoclass:: airflow.contrib.operators.emr_terminate_job_flow_operator.EmrTerminateJobFlowOperator
 .. autoclass:: airflow.contrib.operators.file_to_gcs.FileToGoogleCloudStorageOperator
 .. autoclass:: airflow.contrib.operators.file_to_wasb.FileToWasbOperator
-.. autoclass:: airflow.contrib.operators.gcs_copy_operator.GoogleCloudStorageCopyOperator
 .. autoclass:: airflow.contrib.operators.gcs_download_operator.GoogleCloudStorageDownloadOperator
 .. autoclass:: airflow.contrib.operators.gcs_list_operator.GoogleCloudStorageListOperator
 .. autoclass:: airflow.contrib.operators.gcs_operator.GoogleCloudStorageCreateBucketOperator
@@ -347,7 +346,7 @@ Community contributed hooks
 
 .. autoclass:: airflow.contrib.hooks.aws_dynamodb_hook.AwsDynamoDBHook
 .. autoclass:: airflow.contrib.hooks.aws_hook.AwsHook
-.. autoclass:: airflow.contrib.hooks.aws_labmda_hook.AwsLambdaHook
+.. autoclass:: airflow.contrib.hooks.aws_lambda_hook.AwsLambdaHook
 .. autoclass:: airflow.contrib.hooks.bigquery_hook.BigQueryHook
 .. autoclass:: airflow.contrib.hooks.cloudant_hook.CloudantHook
 .. autoclass:: airflow.contrib.hooks.databricks_hook.DatabricksHook
@@ -356,20 +355,21 @@ Community contributed hooks
 .. autoclass:: airflow.contrib.hooks.discord_webhook_hook.DiscordWebhookHook
 .. autoclass:: airflow.contrib.hooks.emr_hook.EmrHook
 .. autoclass:: airflow.contrib.hooks.fs_hook.FSHook
-.. autoclass:: airflow.contrib.hooks.ftp_Hook.FTPHook
-.. autoclass:: airflow.contrib.hooks.ftp_Hook.FTPSHook
+.. autoclass:: airflow.contrib.hooks.ftp_hook.FTPHook
+.. autoclass:: airflow.contrib.hooks.ftp_hook.FTPSHook
 .. autoclass:: airflow.contrib.hooks.gcp_api_base_hook.GoogleCloudBaseHook
 .. autoclass:: airflow.contrib.hooks.gcp_dataflow_hook.DataFlowHook
 .. autoclass:: airflow.contrib.hooks.gcp_dataproc_hook.DataProcHook
-.. autoclass:: airflow.contrib.hooks.gcp_mleengine_hook.MLEngineHook
+.. autoclass:: airflow.contrib.hooks.gcp_mlengine_hook.MLEngineHook
 .. autoclass:: airflow.contrib.hooks.gcp_pubsub_hook.PubSubHook
 .. autoclass:: airflow.contrib.hooks.gcs_hook.GoogleCloudStorageHook
 .. autoclass:: airflow.contrib.hooks.jenkins_hook.JenkinsHook
 .. autoclass:: airflow.contrib.hooks.jira_hook.JiraHook
+.. autoclass:: airflow.contrib.hooks.pinot_hook.PinotDbApiHook
 .. autoclass:: airflow.contrib.hooks.qubole_hook.QuboleHook
 .. autoclass:: airflow.contrib.hooks.redis_hook.RedisHook
 .. autoclass:: airflow.contrib.hooks.redshift_hook.RedshiftHook
-.. autoclass:: airflow.contrib.hooks.salesfore_hook.SalesforceHook
+.. autoclass:: airflow.contrib.hooks.salesforce_hook.SalesforceHook
 .. autoclass:: airflow.contrib.hooks.sftp_hook.SFTPHook
 .. autoclass:: airflow.contrib.hooks.slack_webhook_hook.SlackWebhookHook
 .. autoclass:: airflow.contrib.hooks.snowflake_hook.SnowflakeHook

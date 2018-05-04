@@ -7,9 +7,9 @@
 # to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
 # with the License.  You may obtain a copy of the License at
-# 
+#
 #   http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing,
 # software distributed under the License is distributed on an
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -1587,7 +1587,9 @@ class SchedulerJob(BaseJob):
                 timeout = 5
                 self.log.info("Waiting up to %s seconds for processes to exit...", timeout)
                 try:
-                    psutil.wait_procs(child_processes, timeout)
+                    psutil.wait_procs(
+                        child_processes, timeout=timeout,
+                        callback=lambda x: self.log.info('Terminated PID %s', x.pid))
                 except psutil.TimeoutExpired:
                     self.log.debug("Ran out of time while waiting for processes to exit")
 
@@ -1595,6 +1597,7 @@ class SchedulerJob(BaseJob):
                 child_processes = [x for x in this_process.children(recursive=True)
                                    if x.is_running() and x.pid in pids_to_kill]
                 if len(child_processes) > 0:
+                    self.log.info("SIGKILL processes that did not terminate gracefully")
                     for child in child_processes:
                         self.log.info("Killing child PID: %s", child.pid)
                         child.kill()
@@ -2118,7 +2121,8 @@ class BackfillJob(BaseJob):
             # all tasks part of the backfill are scheduled to run
             if ti.state == State.NONE:
                 ti.set_state(State.SCHEDULED, session=session)
-            tasks_to_run[ti.key] = ti
+            if ti.state != State.REMOVED:
+                tasks_to_run[ti.key] = ti
 
         return tasks_to_run
 
