@@ -19,6 +19,7 @@
 # under the License.
 
 from __future__ import print_function
+from backports.configparser import NoSectionError
 import logging
 
 import os
@@ -191,7 +192,6 @@ def backfill(args, dag=None):
             start_date=args.start_date,
             end_date=args.end_date,
             mark_success=args.mark_success,
-            include_adhoc=args.include_adhoc,
             local=args.local,
             donot_pickle=(args.donot_pickle or
                           conf.getboolean('core', 'donot_pickle')),
@@ -420,10 +420,6 @@ def _run(args, dag, ti):
 
 @cli_utils.action_logging
 def run(args, dag=None):
-    # Disable connection pooling to reduce the # of connections on the DB
-    # while it's waiting for the task to finish.
-    settings.configure_orm(disable_connection_pool=True)
-
     if dag:
         args.dag_id = dag.dag_id
 
@@ -437,11 +433,26 @@ def run(args, dag=None):
         if os.path.exists(args.cfg_path):
             os.remove(args.cfg_path)
 
+        # Do not log these properties since some may contain passwords.
+        # This may also set default values for database properties like
+        # core.sql_alchemy_pool_size
+        # core.sql_alchemy_pool_recycle
         for section, config in conf_dict.items():
             for option, value in config.items():
-                conf.set(section, option, value)
+                try:
+                    conf.set(section, option, value)
+                except NoSectionError:
+                    log.error('Section {section} Option {option} '
+                              'does not exist in the config!'.format(section=section,
+                                                                     option=option))
+
         settings.configure_vars()
-        settings.configure_orm()
+
+    # IMPORTANT, have to use the NullPool, otherwise, each "run" command may leave
+    # behind multiple open sleeping connections while heartbeating, which could
+    # easily exceed the database connection limit when
+    # processing hundreds of simultaneous tasks.
+    settings.configure_orm(disable_connection_pool=True)
 
     if not args.pickle and not dag:
         dag = get_dag(args)
@@ -960,7 +971,6 @@ def worker(args):
         sp.kill()
 
 
-@cli_utils.action_logging
 def initdb(args):  # noqa
     print("DB: " + repr(settings.engine.url))
     db_utils.initdb(settings.RBAC)
@@ -1297,9 +1307,6 @@ class CLIFactory(object):
                 "to the workers, just tell the workers to run their version "
                 "of the code."),
             "store_true"),
-        'include_adhoc': Arg(
-            ("-a", "--include_adhoc"),
-            "Include dags with the adhoc parameter.", "store_true"),
         'bf_ignore_dependencies': Arg(
             ("-i", "--ignore_dependencies"),
             (
@@ -1640,7 +1647,7 @@ class CLIFactory(object):
             'help': "Run subsections of a DAG for a specified date range",
             'args': (
                 'dag_id', 'task_regex', 'start_date', 'end_date',
-                'mark_success', 'local', 'donot_pickle', 'include_adhoc',
+                'mark_success', 'local', 'donot_pickle',
                 'bf_ignore_dependencies', 'bf_ignore_first_depends_on_past',
                 'subdir', 'pool', 'delay_on_limit', 'dry_run')
         }, {

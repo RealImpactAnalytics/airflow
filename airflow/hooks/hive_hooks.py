@@ -336,7 +336,12 @@ class HiveCliHook(BaseHook):
                 if field_dict is None and (create or recreate):
                     field_dict = _infer_field_types_from_df(df)
 
-                df.to_csv(f, sep=delimiter, **pandas_kwargs)
+                df.to_csv(path_or_buf=f,
+                          sep=delimiter.encode(encoding),
+                          header=False,
+                          index=False,
+                          **pandas_kwargs)
+                f.flush()
 
                 return self.load_file(filepath=f.name,
                                       table=table,
@@ -420,6 +425,11 @@ class HiveCliHook(BaseHook):
             pvals = ", ".join(
                 ["{0}='{1}'".format(k, v) for k, v in partition.items()])
             hql += "PARTITION ({pvals});"
+
+        # As a workaround for HIVE-10541, add a newline character
+        # at the end of hql (AIRFLOW-2412).
+        hql += '\n'
+
         hql = hql.format(**locals())
         self.log.info(hql)
         self.run_cli(hql)

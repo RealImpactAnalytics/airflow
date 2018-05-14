@@ -19,12 +19,12 @@ from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.contrib.kubernetes import kube_client, pod_generator, pod_launcher
+from airflow.contrib.kubernetes.pod import Resources
 from airflow.utils.state import State
 
 template_fields = ('templates_dict',)
 template_ext = tuple()
 ui_color = '#ffefeb'
-
 
 class KubernetesPodOperator(BaseOperator):
     """
@@ -58,6 +58,7 @@ class KubernetesPodOperator(BaseOperator):
     :param get_logs: get the stdout of the container as logs of the tasks
     :type get_logs: bool
     """
+    template_fields = ('cmds', 'arguments', 'env_vars')
 
     def execute(self, context):
         try:
@@ -75,6 +76,9 @@ class KubernetesPodOperator(BaseOperator):
 
             pod.secrets = self.secrets
             pod.envs = self.env_vars
+            pod.image_pull_policy = self.image_pull_policy
+            pod.annotations = self.annotations
+            pod.resources = self.resources
 
             launcher = pod_launcher.PodLauncher(client)
             final_state = launcher.run_pod(
@@ -82,7 +86,9 @@ class KubernetesPodOperator(BaseOperator):
                 startup_timeout=self.startup_timeout_seconds,
                 get_logs=self.get_logs)
             if final_state != State.SUCCESS:
-                raise AirflowException('Pod returned a failure')
+                raise AirflowException(
+                    'Pod returned a failure: {state}'.format(state=final_state)
+                )
         except AirflowException as ex:
             raise AirflowException('Pod Launching failed: {error}'.format(error=ex))
 
@@ -99,6 +105,9 @@ class KubernetesPodOperator(BaseOperator):
                  labels=None,
                  startup_timeout_seconds=120,
                  get_logs=True,
+                 image_pull_policy='IfNotPresent',
+                 annotations=None,
+                 resources=None,
                  *args,
                  **kwargs):
         super(KubernetesPodOperator, self).__init__(*args, **kwargs)
@@ -113,3 +122,6 @@ class KubernetesPodOperator(BaseOperator):
         self.secrets = secrets or []
         self.in_cluster = in_cluster
         self.get_logs = get_logs
+        self.image_pull_policy = image_pull_policy
+        self.annotations = annotations or {}
+        self.resources = resources or Resources()

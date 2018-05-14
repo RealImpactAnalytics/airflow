@@ -108,6 +108,7 @@ Community-contributed Operators
 
 Operators
 ^^^^^^^^^
+.. Alphabetize this list
 
 .. autoclass:: airflow.contrib.operators.awsbatch_operator.AWSBatchOperator
 .. autoclass:: airflow.contrib.operators.bigquery_check_operator.BigQueryCheckOperator
@@ -171,6 +172,7 @@ Operators
 .. autoclass:: airflow.contrib.operators.qubole_operator.QuboleOperator
 .. autoclass:: airflow.contrib.operators.s3_list_operator.S3ListOperator
 .. autoclass:: airflow.contrib.operators.s3_to_gcs_operator.S3ToGoogleCloudStorageOperator
+.. autoclass:: airflow.operators.segment_track_event_operator.SegmentTrackEventOperator
 .. autoclass:: airflow.contrib.operators.sftp_operator.SFTPOperator
 .. autoclass:: airflow.contrib.operators.slack_webhook_operator.SlackWebhookOperator
 .. autoclass:: airflow.contrib.operators.snowflake_operator.SnowflakeOperator
@@ -181,6 +183,7 @@ Operators
 .. autoclass:: airflow.contrib.operators.ssh_operator.SSHOperator
 .. autoclass:: airflow.contrib.operators.vertica_operator.VerticaOperator
 .. autoclass:: airflow.contrib.operators.vertica_to_hive.VerticaToHiveTransfer
+.. autoclass:: airflow.contrib.operators.winrm_operator.WinRMOperator
 
 Sensors
 ^^^^^^^
@@ -343,7 +346,7 @@ interface when possible and acting as building blocks for operators.
 
 Community contributed hooks
 '''''''''''''''''''''''''''
-
+.. Alphabetize this list
 .. autoclass:: airflow.contrib.hooks.aws_dynamodb_hook.AwsDynamoDBHook
 .. autoclass:: airflow.contrib.hooks.aws_hook.AwsHook
 .. autoclass:: airflow.contrib.hooks.aws_lambda_hook.AwsLambdaHook
@@ -370,6 +373,7 @@ Community contributed hooks
 .. autoclass:: airflow.contrib.hooks.redis_hook.RedisHook
 .. autoclass:: airflow.contrib.hooks.redshift_hook.RedshiftHook
 .. autoclass:: airflow.contrib.hooks.salesforce_hook.SalesforceHook
+.. autoclass:: airflow.contrib.hooks.segment_hook.SegmentHook
 .. autoclass:: airflow.contrib.hooks.sftp_hook.SFTPHook
 .. autoclass:: airflow.contrib.hooks.slack_webhook_hook.SlackWebhookHook
 .. autoclass:: airflow.contrib.hooks.snowflake_hook.SnowflakeHook
@@ -379,8 +383,8 @@ Community contributed hooks
 .. autoclass:: airflow.contrib.hooks.sqoop_hook.SqoopHook
 .. autoclass:: airflow.contrib.hooks.ssh_hook.SSHHook
 .. autoclass:: airflow.contrib.hooks.vertica_hook.VerticaHook
-.. autoclass:: airflow.contrib.hooks.spark_jdbc_hook.SparkJDBCHook
 .. autoclass:: airflow.contrib.hooks.wasb_hook.WasbHook
+.. autoclass:: airflow.contrib.hooks.winrm_hook.WinRMHook
 
 Executors
 ---------
